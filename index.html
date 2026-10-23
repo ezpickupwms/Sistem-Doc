@@ -2196,7 +2196,7 @@ const Cloud = {
       auth: { storage: authStorage, storageKey: 'ezp9-auth', persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
       realtime: { params: { eventsPerSecond: 10 } }
     });
-    this.sb.auth.onAuthStateChange(ev => { if (ev === 'SIGNED_OUT' && Auth.user && !Auth.leaving) Auth.forceOut('Sesi Anda sudah berakhir. Silakan masuk lagi.'); });
+    this.sb.auth.onAuthStateChange(ev => { if (ev === 'SIGNED_OUT' && Auth.user && !Auth.leaving) setTimeout(() => { if (Auth.user && !Auth.leaving) Auth.forceOut('Sesi Anda sudah berakhir. Silakan masuk lagi.'); }, 0); });
     return true;
   },
   pendingCount() { return this.dirty.size + (this.running ? 1 : 0) + (this.timer ? 1 : 0); },
