@@ -3721,7 +3721,7 @@ function hdrHTML(hd, pn, total, first, W) {
       const maxH = cfg.headerImageMaxMm || 45;
       const boxH = Math.min(height, maxH);
       const imgW = height > maxH ? width * maxH / height : width;
-      return `<div style="width:${width}mm;max-width:none;margin:0 auto"><img class="kop-img" alt="" data-fallback="hide" src="${esc(cfg.headerImage)}" style="display:block;width:${imgW}mm;height:${boxH}mm;object-fit:contain;margin:0 auto"></div>`;
+      return `<div style="position:relative;left:50%;transform:translateX(-50%);width:${width}mm;max-width:none"><img class="kop-img" alt="" data-fallback="hide" src="${esc(cfg.headerImage)}" style="display:block;width:${imgW}mm;height:${boxH}mm;object-fit:contain;margin:0 auto"></div>`;
     }
     if (k.mode === 'text') {
       const contact = k.contact || [cfg.phone && 'Telp. ' + cfg.phone, cfg.email && 'Email: ' + cfg.email, cfg.website].filter(Boolean).join(' | ');
@@ -8114,7 +8114,7 @@ function cfIdentityHTML() { const d = CF.d; return h`<div class="stack">    <sec
 function cfLetterBrandHTML() { const d=CF.d, imgHead=d.headerMode === 'image', imgFoot=d.footerMode === 'image'; return h`<div class="stack">    <section class="panel"><div class="panel-h"><h3>1. Kop surat keluar &amp; memo</h3><span class="spacer"></span><div class="chips" role="group" aria-label="Jenis kop"><button type="button" class="chip ${imgHead ? '' : 'on'}" data-act="cf.mode" data-k="headerMode" data-v="text">Kop teks</button><button type="button" class="chip ${imgHead ? 'on' : ''}" data-act="cf.mode" data-k="headerMode" data-v="image">Kop gambar</button></div></div><div class="panel-b stack">
       ${imgHead ? h`${cfImgBlock('headerImage', 'Gambar kop', 'Unggah kop lengkap termasuk logo dan informasi perusahaan. Gambar diperkecil proporsional; logo teks otomatis tidak ditambahkan lagi agar tidak ganda.')}
         ${cfT('headerImageMaxMm', 'Tinggi maksimal gambar (mm)', { type: 'number', step: 1, min: 10, mode: 'numeric', help: '10–90 mm.' })}
-        ${F.select('headerImageFit', 'Lebar kop gambar', [['content','Mengikuti margin isi surat'],['page','Lebar kertas A4 (jarak tepi 5 mm)']], CF.d.headerImageFit || 'content', { change:'cf.field' })}`
+        ${F.select('headerImageFit', 'Lebar kop gambar', [['content','Mengikuti margin isi surat'],['page','Lebar kertas A4 (jarak tepi 5 mm)']], CF.d.headerImageFit || 'content', { change:'cf.f' })}`
         : h`<p class="small muted" style="margin:0">Mode teks: sistem menyusun logo, nama perusahaan, alamat, dan kontak secara otomatis. Perubahan identitas di atas langsung memengaruhi kop ini. Header tabel SOP diatur terpisah pada tab Tata letak SOP.</p>
         <label class="fld"><span class="fld-l">Warna nama perusahaan</span><span class="row nowrap" style="gap:8px"><input class="input" type="color" name="accent" value="${/^#[0-9a-fA-F]{6}$/.test(d.accent || '') ? d.accent : '#cc0000'}" data-input="cf.f" style="width:64px;height:38px;padding:3px"><span class="mono small muted">${d.accent || ''}</span></span></label>`}
     </div></section>
