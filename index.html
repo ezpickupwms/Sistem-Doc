@@ -2192,7 +2192,24 @@ const Cloud = {
   init() {
     if (this.sb) return true;
     if (!this.configured()) return false;
+    // Batasi request jaringan supaya login/restore tidak menggantung tanpa batas.
+    // Gunakan AbortController agar pekerjaan jaringan juga benar-benar dibatalkan saat timeout.
+    const boundedFetch = (input, options = {}) => {
+      const ctl = new AbortController();
+      const upstream = options.signal;
+      const abort = () => ctl.abort();
+      if (upstream) {
+        if (upstream.aborted) ctl.abort();
+        else upstream.addEventListener('abort', abort, { once: true });
+      }
+      const timer = setTimeout(() => ctl.abort(), 20000);
+      return fetch(input, { ...options, signal: ctl.signal }).finally(() => {
+        clearTimeout(timer);
+        if (upstream) upstream.removeEventListener('abort', abort);
+      });
+    };
     this.sb = window.supabase.createClient(CLOUD_CFG.url, CLOUD_CFG.anonKey, {
+      global: { fetch: boundedFetch },
       auth: { storage: authStorage, storageKey: 'ezp9-auth', persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
       realtime: { params: { eventsPerSecond: 10 } }
     });
