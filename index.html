@@ -7861,12 +7861,13 @@ function usrTable() {
     ]
   });
 }
-const ROLE_MATRIX = { draft:null, busy:false };
+const ROLE_MATRIX = { draft:null, busy:false, open:false };
 ACT['usr.caps.edit'] = async () => {
   if (!can('user.manage')) return;
   await roleCapsLoad();
   if (!ROLE_CAPS_READY) return toast('Hak akses server belum bisa dibaca. Coba lagi setelah tersinkron.', 'danger');
   ROLE_MATRIX.draft = Object.fromEntries(Object.entries(CAPS).map(([cap, roles]) => [cap, roles.split(' ').filter(Boolean)]));
+  ROLE_MATRIX.open = true;
   App.rerender();
 };
 ACT['usr.caps.toggle'] = el => {
@@ -7875,9 +7876,9 @@ ACT['usr.caps.toggle'] = el => {
   if (!Object.hasOwn(CAP_LABEL,cap) || !['supervisor','staff','viewer'].includes(role) || ROLE_CAP_LOCKED.has(cap)) return;
   const s=new Set(ROLE_MATRIX.draft[cap] || []);
   if(s.has(role)) s.delete(role); else s.add(role);
-  ROLE_MATRIX.draft[cap]=Array.from(s); App.rerender();
+  ROLE_MATRIX.draft[cap]=Array.from(s); ROLE_MATRIX.open = true; App.rerender();
 };
-ACT['usr.caps.cancel'] = () => { ROLE_MATRIX.draft=null; App.rerender(); };
+ACT['usr.caps.cancel'] = () => { ROLE_MATRIX.draft=null; ROLE_MATRIX.open=true; App.rerender(); };
 ACT['usr.caps.save'] = async () => {
   if (!can('user.manage') || !ROLE_MATRIX.draft || ROLE_MATRIX.busy || !Cloud.sb) return;
   ROLE_MATRIX.busy=true;
@@ -7888,16 +7889,17 @@ ACT['usr.caps.save'] = async () => {
     ROLE_CAPS_READY=false;
     await roleCapsLoad();
     if(!ROLE_CAPS_READY) throw Error('Tersimpan, tetapi gagal membaca ulang data server.');
-    ROLE_MATRIX.draft=null;
+    ROLE_MATRIX.draft=null; ROLE_MATRIX.open=true;
     logAct('Ubah hak akses per peran','','Matriks izin diperbarui');
     toast('Hak akses tersimpan di server. Pengguna perlu memuat ulang untuk mendapatkan izin terbaru.','ok');
     App.rerender();
   } catch(e) { toast('Gagal menyimpan hak akses: '+(e.message || String(e)),'danger',7000); }
   finally { ROLE_MATRIX.busy=false; }
 };
+CHG['usr.caps.panel'] = el => { ROLE_MATRIX.open = el.open; };
 function usrMatrix() {
   const roles = Object.keys(ROLES), has = (cap, r) => (ROLE_MATRIX.draft ? ROLE_MATRIX.draft[cap] || [] : (CAPS[cap] || '').split(' ')).includes(r), editing=!!ROLE_MATRIX.draft;
-  return h`<details class="panel usr-matrix"><summary><b>Hak akses per peran</b><span class="muted small">Apa yang boleh dilakukan tiap peran</span></summary><div class="panel-b"><p class="small muted">Izin disimpan di Supabase. Pengelolaan pengguna, konfigurasi utama dan pemulihan data tetap khusus Superadmin.</p><div class="row">${editing ? h`${btn('Simpan hak akses','usr.caps.save',{icon:'save',cls:'primary'})}${btn('Batal','usr.caps.cancel')}` : btn('Atur hak akses','usr.caps.edit',{icon:'edit',cls:'primary'})}</div></div>
+  return h`<details class="panel usr-matrix" ${raw(ROLE_MATRIX.open || editing ? 'open' : '')} data-change="usr.caps.panel"><summary><b>Hak akses per peran</b><span class="muted small">Apa yang boleh dilakukan tiap peran</span></summary><div class="panel-b"><p class="small muted">Izin disimpan di Supabase. Pengelolaan pengguna, konfigurasi utama dan pemulihan data tetap khusus Superadmin.</p><div class="row">${editing ? h`${btn('Simpan hak akses','usr.caps.save',{icon:'save',cls:'primary'})}${btn('Batal','usr.caps.cancel')}` : btn('Atur hak akses','usr.caps.edit',{icon:'edit',cls:'primary'})}</div></div>
     <div class="tbl-wrap"><table class="table dense"><thead><tr><th>Kemampuan</th>${roles.map(r => h`<th class="c">${ROLES[r].replace(' (baca saja)', '')}</th>`)}</tr></thead>
     <tbody>${Object.keys(CAP_LABEL).map(c => h`<tr><td>${CAP_LABEL[c]}</td>${roles.map(r => h`<td class="c">${editing && r !== 'admin' && !ROLE_CAP_LOCKED.has(c) ? h`<button type="button" class="chip ${has(c,r) ? 'on' : ''}" data-act="usr.caps.toggle" data-cap="${c}" data-role="${r}" aria-label="${has(c,r) ? 'Cabut':'Beri'} ${CAP_LABEL[c]} untuk ${ROLES[r]}">${has(c,r) ? ico('check',16) : '–'}</button>` : has(c, r) ? h`<span style="color:var(--ok)" aria-label="Boleh">${ico('check', 16)}</span>` : h`<span class="muted" aria-label="Tidak">–</span>`}</td>`)}</tr>`)}</tbody></table></div></details>`;
 }
