@@ -3134,11 +3134,11 @@ function showLogin(msg) {
 }
 ACT['pw.toggle'] = el => { const i = byId(el.dataset.for); if (i) i.type = i.type === 'password' ? 'text' : 'password'; };
 SUB['auth.login'] = async f => {
-  const d = formObj(f), box = byId('loginErr'); box.innerHTML = '';
+  const d = formObj(f), box = byId('loginErr'); box.innerHTML = ''; box.className = 'login-err'; box.removeAttribute('role');
   const b = f.querySelector('button[type=submit]'); b.disabled = true; b.textContent = 'Memeriksa akun…';
   const stage = document.createElement('p'); stage.className = 'small muted'; stage.id = 'loginStage'; stage.setAttribute('role', 'status'); stage.textContent = 'Menghubungkan ke Supabase Auth…'; box.after(stage);
-  await new Promise(r => setTimeout(r, 30));
   try {
+    await new Promise(r => setTimeout(r, 30));
     const r = await Auth.login(d.username, d.password, d.remember);
     if (!r.ok) {
       box.textContent = r.error || 'Login gagal. Silakan coba lagi.';
