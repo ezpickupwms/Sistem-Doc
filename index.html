@@ -2595,17 +2595,10 @@ const Auth = {
     if (uname) this.clearFails(uname);
     this.user = this.pub({ username: prof.username, name: prof.name, role: prof.role, initials: prof.initials });
     this.lastActive = Date.now(); this.saveSession(remember);
-    if (st.empty) {
-      if (stage) stage.textContent = 'Menyiapkan data awal untuk Superadmin…';
-      const init = await Cloud.initServer();
-      if (!init.ok) {
-        const detail = Object.entries(init.by || {}).filter(([, v]) => v !== 'ok').map(([k, v]) => `${k}: ${v}`).join(', ');
-        await Cloud.sb.auth.signOut(); Cloud.stop(); this.user = null; this.clearSession();
-        return { ok: false, error: 'Inisialisasi server belum berhasil. ' + (detail || Cloud.lastError || 'Periksa koneksi dan izin database.') };
-      }
-    }
+    // Inisialisasi data pertama tidak boleh menahan login. Tampilkan dashboard dahulu
+    // agar dialog impor data lama dan progres sinkronisasi bisa digunakan secara normal.
     Cloud.sb.rpc('ezp_touch_login').then(() => { }, () => { });
-    return { ok: true, mustChange: !!prof.must_change };
+    return { ok: true, mustChange: !!prof.must_change, needsInit: !!st.empty };
   },
   saveSession(remember) {
     const s = { u: this.user.username, t: this.lastActive, exp: remember ? Date.now() + 12 * 3600e3 : 0, r: remember ? 1 : 0 };
@@ -3147,7 +3140,7 @@ SUB['auth.login'] = async f => {
       return;
     }
     logAct('Masuk', 'Sesi', `Berhasil masuk sebagai ${ROLES[Auth.user.role]}`);
-    afterLogin(r.mustChange);
+    afterLogin(r.mustChange, r.needsInit);
   } catch (e) {
     console.error('[EZP login]', e);
     box.textContent = 'Proses login gagal: ' + (typeof authErr === 'function' ? authErr(e) : (e && e.message || 'Periksa koneksi server.'));
@@ -3158,10 +3151,26 @@ SUB['auth.login'] = async f => {
     b.textContent = 'Masuk';
   }
 };
-function afterLogin(mustChange) {
+async function afterLogin(mustChange, needsInit) {
   byId('login').hidden = true; byId('app').hidden = false;
   if (!location.hash || location.hash === '#/' || location.hash === '#') location.hash = '#/dashboard';
   App.lastHash = location.hash; App.render();
+  if (needsInit) {
+    try {
+      // Dialog impor milik initServer ada di modalRoot; login harus tersembunyi dulu.
+      const init = await Cloud.initServer();
+      if (!init.ok) {
+        const detail = Object.entries(init.by || {}).filter(([, v]) => v !== 'ok').map(([k, v]) => k + ': ' + v).join(', ');
+        toast('Data awal belum seluruhnya tersimpan: ' + (detail || Cloud.lastError || 'Periksa izin database.'), 'danger', 12000);
+      } else {
+        toast('Data awal berhasil disimpan di server.', 'ok');
+      }
+      App.rerender();
+    } catch (e) {
+      console.error('[EZP initServer]', e);
+      toast('Penyiapan data awal bermasalah: ' + cloudMsg(e), 'danger', 12000);
+    }
+  }
   if (mustChange) forcePasswordChange(); else migrationNotice();
 }
 ACT['auth.logout'] = async () => {
