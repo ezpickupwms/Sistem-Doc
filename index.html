@@ -372,6 +372,10 @@ ins.w { background: color-mix(in srgb, var(--ok) 28%, transparent); text-decorat
 
 /* kop surat */
 .kop { text-align: center; padding-bottom: 7pt; border-bottom: 3pt double #000; }
+.kop-template { display:flex;align-items:center;justify-content:space-between;gap:5mm;text-align:left;box-sizing:border-box;width:100%; }
+.kop-template-info { flex:1;min-width:0;overflow-wrap:anywhere; }
+.kop-template-logo { flex:0 0 auto;max-width:38mm;text-align:right; }
+.kop-template-logo img { display:block;max-width:38mm;max-height:22mm;margin:0; }
 .kop img { max-height: 19mm; margin-bottom: 3pt; }
 .kop .kn { font-size: 16pt; font-weight: bold; letter-spacing: .06em; line-height: 1.2; }
 .kop .ka { font-size: 9.5pt; line-height: 1.35; } .kop .kc { font-size: 9.5pt; }
@@ -3699,8 +3703,22 @@ function hdrHTML(hd, pn, total, first, W) {
       + `<tr><td class="st" colspan="2">${esc(hd.title)}</td><td class="no"><b>Halaman</b> : ${pn} dari ${total} halaman</td></tr></table>`;
   }
   if (hd.k === 'kop') {
+    if (hd.setting && hd.setting.mode === 'none') return '';
     if (!first) return `<div class="kop-slim"><span>${esc(hd.slim || '')}</span><span>Halaman ${pn} dari ${total}</span></div>`;
-    if (cfg.headerMode === 'image' && cfg.headerImage) { const b = imgBox(cfg.headerImage, W || 166, cfg.headerImageMaxMm || 45); return `<img class="kop-img" alt="" data-fallback="hide" src="${esc(cfg.headerImage)}" style="width:${b.w}mm;height:${b.h}mm">`; }
+    const k = normTemplateKop(hd.setting);
+    if (k.mode === 'image') {
+      if (!k.image) return '';
+      const usable = Math.max(50, (W || 166) - k.left - k.right);
+      const b = imgBox(k.image, usable, k.height);
+      const iw = k.fit === 'width' ? usable : b.w;
+      const ih = k.fit === 'width' ? Math.min(k.height, b.h * usable / Math.max(1,b.w)) : b.h;
+      return `<div style="width:100%;box-sizing:border-box;padding:${k.top}mm ${k.right}mm ${k.bottom}mm ${k.left}mm"><img class="kop-img" alt="" data-fallback="hide" src="${esc(k.image)}" style="display:block;width:${iw}mm;height:${ih}mm;object-fit:contain;max-width:100%;margin:0 auto"></div>`;
+    }
+    if (k.mode === 'global' && cfg.headerMode === 'image' && cfg.headerImage) { const b = imgBox(cfg.headerImage, W || 166, cfg.headerImageMaxMm || 45); return `<img class="kop-img" alt="" data-fallback="hide" src="${esc(cfg.headerImage)}" style="width:${b.w}mm;height:${b.h}mm">`; }
+    if (k.mode === 'text') {
+      const contact = k.contact || [cfg.phone && 'Telp. ' + cfg.phone, cfg.email && 'Email: ' + cfg.email, cfg.website].filter(Boolean).join(' | ');
+      return `<div class="kop kop-template" style="padding:${k.top}mm ${k.right}mm ${k.bottom}mm ${k.left}mm"><div class="kop-template-info"><div class="kn">${esc(k.company || cfg.companyName || '')}</div><div class="ka">${esc(k.address || cfg.address || '')}</div><div class="kc">${esc(contact)}</div></div><div class="kop-template-logo">${hdrLogo(38,22)}</div></div>`;
+    }
     const ct = [cfg.phone && 'Telp. ' + cfg.phone, cfg.email && 'Email: ' + cfg.email, cfg.website].filter(Boolean).map(esc).join('  |  ');
     const acc = cfg.accent || '#cc0000';
     return `<div class="kop" style="border-bottom-color:#000">${hdrLogo(40, 19)}<div class="kn" style="color:${esc(acc)}">${esc(cfg.companyName || '')}</div>${cfg.address ? `<div class="ka">${esc(cfg.address)}</div>` : ''}${ct ? `<div class="kc">${ct}</div>` : ''}</div>`;
@@ -3748,6 +3766,7 @@ function withHF(spec) {
 /* semua gambar yang dibutuhkan spec */
 function specImages(spec) {
   const cfg = dcfg(), out = [logoSrc()];
+  if (spec.hd && spec.hd.setting && spec.hd.setting.image) out.push(spec.hd.setting.image);
   if (cfg.headerImage) out.push(cfg.headerImage); if (cfg.footerImage) out.push(cfg.footerImage);
   (spec.blocks || []).forEach(b => { if (b.t === 'sig') (b.signers || []).forEach(s => s.img && out.push(s.img)); if (b.t === 'img' && b.src) out.push(b.src); });
   return uniq(out.filter(Boolean));
@@ -3889,7 +3908,7 @@ function letterSpec(L) {
   return {
     kind: 'letter', land: false, margins: m, gap: 4, font: { family: cfg.letterFont ? `${cfg.letterFont}, "Liberation Sans", Helvetica, sans-serif` : '', size: sz },
     watermark: L.status === 'batal' ? 'BATAL' : (L.watermark || ''),
-    hd: { k: 'kop', slim: [L.no, L.subject].filter(Boolean).join(' · ') }, ft, blocks: B, meta: { type: 'letter', no: L.no, title: L.subject || '' }
+    hd: { k: 'kop', setting: L.kop || normTemplateKop(), slim: [L.no, L.subject].filter(Boolean).join(' · ') }, ft, blocks: B, meta: { type: 'letter', no: L.no, title: L.subject || '' }
   };
 }
 
@@ -5862,7 +5881,7 @@ function composeLetter(S, o) {
   const no = o.no != null ? o.no : (S.useManual && S.manualNo.trim() ? S.manualNo.trim() : peekNumber(t.id, S.date).no);
   return {
     typeId: t.id, typeName: t.name, layout: t.layout || 'surat', no, date: S.date, subject: S.subject.trim(), to: S.to.trim(), toAddr: S.toAddr.trim(), from: S.from.trim(), cc: S.cc.trim(), lampiran: S.lampiran.trim(),
-    body: ltBody(t, S, no), items: clone(S.items), itemCols: arr(t.items).slice(), signers: ltSigners(S), sigAlign: S.sigAlign || 'center', fields: clone(S.fields)
+    body: ltBody(t, S, no), kop: clone(t.kop || normTemplateKop()), items: clone(S.items), itemCols: arr(t.items).slice(), signers: ltSigners(S), sigAlign: S.sigAlign || 'center', fields: clone(S.fields)
   };
 }
 /* siap dirender: gambar tanda tangan dibaca dari penandatangan */
@@ -6517,6 +6536,20 @@ const teDirty = () => !!TE.dirty;
 const teIsDefault = id => DEFAULT_LETTER_TYPES.some(d => d.id === id);
 
 /* ---------- normalisasi ---------- */
+/* Pengaturan kop tersimpan per jenis, bukan mengubah konfigurasi global. */
+function normTemplateKop(k) {
+  k = k || {};
+  const mode = ['global','text','image','none'].includes(k.mode) ? k.mode : 'global';
+  const fit = ['contain','width'].includes(k.fit) ? k.fit : 'contain';
+  const mm = (v, def, min, max) => { const n = Number(v); return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : def; };
+  return {
+    mode, fit, image: typeof k.image === 'string' && /^data:image\/(?:png|jpeg|webp);base64,/.test(k.image) ? k.image : '',
+    height: mm(k.height, 38, 10, 65),
+    left: mm(k.left, 0, 0, 25), right: mm(k.right, 0, 0, 25),
+    top: mm(k.top, 0, 0, 20), bottom: mm(k.bottom, 2, 0, 20),
+    company: str(k.company || ''), address: str(k.address || ''), contact: str(k.contact || '')
+  };
+}
 function normType(t) {
   t = t || {};
   const fields = arr(t.fields).map(f => {
@@ -6531,15 +6564,16 @@ function normType(t) {
   }).filter(f => f.k || f.l);
   return {
     id: str(t.id).trim(), name: str(t.name).trim(), prefix: str(t.prefix).trim() || str(t.id).trim(), layout: LAYOUTS[t.layout] ? t.layout : 'surat', subject: str(t.subject).trim(),
-    items: arr(t.items).map(x => str(x).trim()).filter(Boolean), fields, body: str(t.body).replace(/\r/g, '')
+    items: arr(t.items).map(x => str(x).trim()).filter(Boolean), fields, body: str(t.body).replace(/\r/g, ''),
+    kop: normTemplateKop(t.kop)
   };
 }
 function teToDraft(t) {
   t = normType(t);
-  return { id: t.id, name: t.name, prefix: t.prefix === t.id ? '' : t.prefix, layout: t.layout, subject: t.subject, itemsText: t.items.join('\n'), body: t.body,
+  return { id: t.id, name: t.name, prefix: t.prefix === t.id ? '' : t.prefix, layout: t.layout, subject: t.subject, itemsText: t.items.join('\n'), body: t.body, kop: clone(t.kop),
     fields: t.fields.map(f => ({ k: f.k, l: f.l, t: f.t, optsText: arr(f.opts).join(', '), def: f.def == null ? '' : String(f.def), ph: f.ph || '', rows: f.rows || 4, req: !!f.req, auto: false })) };
 }
-const teFromDraft = d => normType({ id: d.id, name: d.name, prefix: d.prefix, layout: d.layout, subject: d.subject, items: linesOf(d.itemsText), body: d.body, fields: d.fields.map(f => Object.assign({}, f, { opts: String(f.optsText || '').split(',') })) });
+const teFromDraft = d => normType({ id: d.id, name: d.name, prefix: d.prefix, layout: d.layout, subject: d.subject, items: linesOf(d.itemsText), body: d.body, kop: d.kop, fields: d.fields.map(f => Object.assign({}, f, { opts: String(f.optsText || '').split(',') })) });
 
 /* ---------- pemeriksaan ---------- */
 function teLint(t, isNew) {
@@ -6631,7 +6665,7 @@ INP['te.f'] = el => {
 INP['te.key'] = el => { if (!TE.d) return; const m = /^fields\.(\d+)\./.exec(el.name), f = m && TE.d.fields[+m[1]]; if (!f) return; f.k = el.value.trim(); f.auto = false; TE.dirty = true; teSchedule(); };
 CHG['te.f'] = el => {
   if (!TE.d) return; setPath(TE.d, el.name, el.type === 'checkbox' ? el.checked : el.value); TE.dirty = true;
-  if (el.name === 'layout' || /\.t$/.test(el.name)) App.rerender(); else teSchedule();
+  if (el.name === 'layout' || el.name === 'kop.mode' || /\.t$/.test(el.name)) App.rerender(); else teSchedule();
 };
 const teUniqueKey = (base, skip) => { let k = base || 'isian', n = 2; const taken = i => TE.d.fields.some((f, j) => j !== skip && f.k === k); while (taken()) k = `${base || 'isian'}_${n++}`.slice(0, 24); return k; };
 CHG['te.label'] = el => {
@@ -6639,6 +6673,16 @@ CHG['te.label'] = el => {
   f.l = el.value;
   if ((f.auto || !f.k) && teSlug(f.l)) { f.k = teUniqueKey(teSlug(f.l), i); f.auto = true; TE.dirty = true; App.rerender(); }
 };
+ACT['te.kopimg'] = async () => {
+  if (!TE.d) return;
+  const f = await pickFile('image/png,image/jpeg,image/webp'); if (!f) return;
+  if (!['image/png','image/jpeg','image/webp'].includes(f.type) || f.size > 8*1024*1024) return toast('Gunakan PNG, JPG atau WEBP maksimal 8 MB.','danger');
+  try {
+    TE.d.kop.image = await shrinkImage(f, { maxW: 1800, maxH: 700, type: 'image/jpeg', quality: .88 });
+    TE.d.kop.mode = 'image'; TE.dirty = true; App.rerender();
+  } catch (e) { toast('Gagal memproses gambar kop.','danger'); }
+};
+ACT['te.koprm'] = () => { if (!TE.d) return; TE.d.kop.image = ''; TE.dirty = true; App.rerender(); };
 ACT['te.fadd'] = async () => {
   if (!TE.d) return; if (TE.d.fields.length >= 20) return toast('Maksimal 20 isian.', 'danger');
   TE.d.fields.push({ k: teUniqueKey('isian'), l: '', t: 'text', optsText: '', def: '', ph: '', rows: 4, req: false, auto: true }); TE.dirty = true;
@@ -6735,6 +6779,12 @@ function teFormHTML(d) {
       ${F.select('layout', 'Tata letak', Object.entries(LAYOUTS), d.layout, { change: 'te.f' })}
       ${F.text('subject', 'Perihal / judul bawaan', d.subject, { input: 'te.f', cls: 'full', help: d.layout === 'ba' ? 'Pada berita acara, perihal menjadi judul dokumen.' : 'Boleh dikosongkan; pembuat surat mengisinya.' })}
     </div></div></section>
+    <section class="panel"><div class="panel-h"><h3>Kop surat khusus template</h3></div><div class="panel-b stack-sm">
+      ${F.select('kop.mode', 'Jenis kop surat', [['global','Ikuti pengaturan kop global'],['text','Kop teks + logo di kanan'],['image','Kop gambar khusus'],['none','Tanpa kop surat']], d.kop.mode, { change:'te.f' })}
+      ${d.kop.mode === 'image' ? h`<div class="stack-sm"><div class="row">${btn(d.kop.image ? 'Ganti gambar kop' : 'Unggah gambar kop', 'te.kopimg', { icon:'upload' })}${d.kop.image ? btn('Hapus gambar', 'te.koprm', { icon:'trash' }) : ''}</div>${d.kop.image ? h`<img src="${d.kop.image}" alt="Pratinjau kop gambar" style="max-width:100%;max-height:130px;object-fit:contain">` : h`<p class="small muted">PNG/JPG/WEBP; gambar disesuaikan proporsional agar tidak terpotong.</p>`}${F.select('kop.fit','Penyesuaian gambar',[['contain','Fit proporsional'],['width','Isi lebar area kop']],d.kop.fit,{change:'te.f'})}${F.number('kop.height','Tinggi maksimal kop (mm)',d.kop.height,{input:'te.f',min:10,max:65})}</div>` : ''}
+      ${d.kop.mode === 'text' ? h`<div class="stack-sm">${F.text('kop.company','Nama perusahaan',d.kop.company,{input:'te.f',ph:'Kosong = pengaturan global'})}${F.area('kop.address','Alamat perusahaan',d.kop.address,{input:'te.f',rows:2})}${F.text('kop.contact','Kontak / email / NPWP',d.kop.contact,{input:'te.f'})}<p class="small muted">Informasi rata kiri dan logo perusahaan di kanan.</p></div>` : ''}
+      ${d.kop.mode === 'image' || d.kop.mode === 'text' ? h`<div class="form-grid">${['top','right','bottom','left'].map(k => F.number('kop.'+k, 'Jarak '+({top:'atas',right:'kanan',bottom:'bawah',left:'kiri'}[k])+' (mm)',d.kop[k],{input:'te.f',min:0,max:25}))}</div>` : ''}
+    </div></section>
     <section class="panel"><div class="panel-h"><h3>Isian formulir</h3><span class="muted small">${d.fields.length} isian</span><span class="spacer"></span>${btn('Isian', 'te.fadd', { icon: 'plus', cls: 'sm' })}</div><div class="panel-b stack-sm">
       ${d.fields.length ? d.fields.map((f, i) => teFieldCard(f, i, d.fields.length)) : h`<div class="empty-sm">Belum ada isian. Tambahkan isian agar pembuat surat bisa mengisi data.</div>`}
     </div></section>
