@@ -2514,9 +2514,9 @@ const Cloud = {
    Catatan: ini kontrol akses di sisi klien (browser). Cukup untuk mencegah
    akses tak sengaja, bukan pengganti keamanan server.
    ===================================================================== */
-const ROLES = { admin: 'Administrator', supervisor: 'Supervisor', staff: 'Staff', viewer: 'Viewer (baca saja)' };
+const ROLES = { admin: 'Superadmin', supervisor: 'Supervisor', staff: 'Staff', viewer: 'Viewer (baca saja)' };
 const ROLE_DESC = {
-  admin: 'Akses penuh: pengguna, konfigurasi, restore data, hapus dokumen.',
+  admin: 'Superadmin: pengaturan akun, reset kata sandi pengguna, konfigurasi, backup, dan seluruh modul.',
   supervisor: 'Membuat & menyetujui revisi SOP, mengelola KPI, audit, formulir, surat.',
   staff: 'Mengusulkan revisi SOP, membuat surat, mengisi KPI.',
   viewer: 'Hanya melihat dan mencetak dokumen.'
@@ -2580,13 +2580,15 @@ const Auth = {
       this.recordFail(uname); const left = this.lockInfo(uname);
       return { ok: false, error: left.locked ? `Terlalu banyak percobaan. Akun dikunci ${Math.ceil(left.sec / 60)} menit.` : (error && /banned/i.test(error.message || '') ? 'Akun dinonaktifkan. Hubungi administrator.' : 'Nama pengguna atau kata sandi salah.') };
     }
+    const stage = byId('loginStage'); if (stage) stage.textContent = 'Akun terverifikasi. Memuat profil dan data…';
     return this.enter(!!remember, uname);
   },
   /* setelah sesi Supabase sah: muat profil + seluruh data */
   async enter(remember, uname) {
     let prof = null;
     try { prof = await Cloud.myProfile(); } catch (e) { await Cloud.sb.auth.signOut(); return { ok: false, error: authErr(e) }; }
-    if (!prof || prof.disabled) { await Cloud.sb.auth.signOut(); return { ok: false, error: 'Akun dinonaktifkan atau belum terdaftar di sistem. Hubungi administrator.' }; }
+    if (!prof || prof.disabled) { await Cloud.sb.auth.signOut(); return { ok: false, error: 'Akun dinonaktifkan atau belum terdaftar di sistem. Hubungi Superadmin.' }; }
+    const stage = byId('loginStage'); if (stage) stage.textContent = 'Menyinkronkan data server…';
     const st = await Cloud.start();
     if (!st.ok) { await Cloud.sb.auth.signOut(); Cloud.stop(); return { ok: false, error: st.error || 'Gagal memuat data dari server.' }; }
     if (st.empty && prof.role !== 'admin') { await Cloud.sb.auth.signOut(); Cloud.stop(); return { ok: false, error: 'Sistem belum diinisialisasi. Minta administrator masuk lebih dulu.' }; }
@@ -2594,6 +2596,7 @@ const Auth = {
     this.user = this.pub({ username: prof.username, name: prof.name, role: prof.role, initials: prof.initials });
     this.lastActive = Date.now(); this.saveSession(remember);
     if (st.empty) {
+      if (stage) stage.textContent = 'Menyiapkan data awal untuk Superadmin…';
       const init = await Cloud.initServer();
       if (!init.ok) {
         const detail = Object.entries(init.by || {}).filter(([, v]) => v !== 'ok').map(([k, v]) => `${k}: ${v}`).join(', ');
@@ -3132,7 +3135,8 @@ function showLogin(msg) {
 ACT['pw.toggle'] = el => { const i = byId(el.dataset.for); if (i) i.type = i.type === 'password' ? 'text' : 'password'; };
 SUB['auth.login'] = async f => {
   const d = formObj(f), box = byId('loginErr'); box.innerHTML = '';
-  const b = f.querySelector('button[type=submit]'); b.disabled = true; b.textContent = 'Memeriksa…';
+  const b = f.querySelector('button[type=submit]'); b.disabled = true; b.textContent = 'Memeriksa akun…';
+  const stage = document.createElement('p'); stage.className = 'small muted'; stage.id = 'loginStage'; stage.setAttribute('role', 'status'); stage.textContent = 'Menghubungkan ke Supabase Auth…'; box.after(stage);
   await new Promise(r => setTimeout(r, 30));
   try {
     const r = await Auth.login(d.username, d.password, d.remember);
@@ -3149,6 +3153,7 @@ SUB['auth.login'] = async f => {
     box.textContent = 'Proses login gagal: ' + (typeof authErr === 'function' ? authErr(e) : (e && e.message || 'Periksa koneksi server.'));
     box.setAttribute('role', 'alert');
   } finally {
+    if (stage.isConnected) stage.remove();
     b.disabled = false;
     b.textContent = 'Masuk';
   }
@@ -3212,12 +3217,14 @@ ACT['profile.open'] = () => {
 };
 SUB['profile.save'] = async f => {
   const d = formObj(f), er = byId('prErr'); const fail = m => { er.hidden = false; er.textContent = m; };
-  let e = await Auth.updateOwnName(d.name); if (e) return fail(e);
-  if (d.p1 || d.old) {
+  if (d.p1 || d.old || d.p2) {
+    if (!d.old || !d.p1) return fail('Isi kata sandi saat ini dan kata sandi baru.');
     if (d.p1 !== d.p2) return fail('Kedua kata sandi baru tidak sama.');
-    e = await Auth.changeOwnPassword(d.old, d.p1); if (e) return fail(e);
+    const pe = pwPolicy(d.p1, Auth.user.username); if (pe) return fail(pe);
+    const e = await Auth.changeOwnPassword(d.old, d.p1); if (e) return fail(e);
     logAct('Ganti kata sandi', Auth.user.username, '');
   }
+  const e = await Auth.updateOwnName(d.name); if (e) return fail(e);
   closeModal(true); toast('Profil diperbarui.', 'ok'); renderTop(); renderSide();
 };
 ACT['help.shortcuts'] = () => openModal({
@@ -7773,8 +7780,9 @@ function usrMatrix() {
 route(/^\/users$/, () => {
   const us = DB.users, dflt = us.filter(u => !u.disabled && usrIsDefaultPw(u)), roles = Object.keys(ROLES);
   return {
-    title: 'Pengguna',
-    html: h`${pageHead('Pengguna', 'Kelola akun dan peran. Peran menentukan siapa yang boleh mengusulkan, menyetujui, mengisi, dan mengatur.', btn('Tambah pengguna', 'usr.add', { icon: 'plus', cls: 'primary' }))}
+    title: 'Pengaturan Pengguna',
+    html: h`${pageHead('Pengaturan Pengguna', 'Panel Superadmin untuk mengelola login, akses pengguna, dan kata sandi sementara.', btn('Tambah pengguna', 'usr.add', { icon: 'plus', cls: 'primary' }))}
+    <section class="panel"><div class="panel-b"><div class="row" style="justify-content:space-between;gap:12px;flex-wrap:wrap"><div><b>Keamanan akun Superadmin</b><p class="small muted" style="margin:4px 0 0">Ganti kata sandi sendiri melalui Profil. Untuk akun tim, gunakan ikon kunci pada tabel dan wajibkan penggantian saat login berikutnya.</p></div><button type="button" class="btn primary" data-act="profile.open">${ico('lock', 16)} Ganti kata sandi saya</button></div></div></section>
     ${dflt.length ? h`<div class="callout warn">${ico('alert', 18)}<div><b>${dflt.length} akun masih memakai kata sandi bawaan:</b> ${dflt.map(u => u.username).join(', ')}. Kata sandi bawaan diketahui umum — pastikan pemiliknya menggantinya, atau nonaktifkan/hapus akun yang tidak dipakai.</div></div>` : ''}
     <div class="stats">${roles.map(r => statCard(ROLES[r].replace(' (baca saja)', ''), fmtNum(us.filter(u => u.role === r && !u.disabled).length), { sub: ROLE_DESC[r] }))}</div>
     <section class="panel"><div class="panel-b flush">${usrTable()}</div></section>
