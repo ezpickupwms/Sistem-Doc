@@ -2534,7 +2534,24 @@ const CAPS = {
   'audit.manage': 'admin supervisor', 'config.manage': 'admin', 'user.manage': 'admin',
   'data.backup': 'admin supervisor', 'data.restore': 'admin', 'activity.view': 'admin supervisor'
 };
-const can = cap => { const r = Auth.user && Auth.user.role; return !!r && (CAPS[cap] || '').split(' ').includes(r); };
+const ROLE_CAP_LOCKED = new Set(['user.manage','config.manage','data.restore']);
+const ROLE_CAP_DEFAULTS = Object.freeze(Object.fromEntries(Object.entries(CAPS).map(([k,v]) => [k,v])));
+let ROLE_CAPS_READY = false;
+async function roleCapsLoad() {
+  if (!Cloud.sb) return;
+  const {data,error} = await Cloud.sb.from('ezp_role_caps').select('cap,roles');
+  if (error || !Array.isArray(data) || !data.length) { ROLE_CAPS_READY = false; return; }
+  for (const row of data) if (Object.hasOwn(ROLE_CAP_DEFAULTS,row.cap) && Array.isArray(row.roles)) CAPS[row.cap] = row.roles.join(' ');
+  ROLE_CAPS_READY = true;
+}
+const can = cap => {
+  const r = Auth.user && Auth.user.role;
+  if (!r) return false;
+  if (ROLE_CAP_LOCKED.has(cap)) return r === 'admin';
+  // Jangan memakai fallback lokal untuk mengizinkan tindakan sebelum matriks server berhasil dimuat.
+  if (!ROLE_CAPS_READY) return r === 'admin' && (ROLE_CAP_DEFAULTS[cap] || '').split(' ').includes(r);
+  return (CAPS[cap] || '').split(' ').includes(r);
+};
 
 const COMMON_PW = new Set(['admin123', 'password', 'password1', '12345678', '123456789', 'qwerty123', 'sup123', 'staff123', 'ezpickup', 'ezpickup123']);
 function pwPolicy(pw, username) {
@@ -2599,6 +2616,7 @@ const Auth = {
     if (st.empty && prof.role !== 'admin') { await Cloud.sb.auth.signOut(); Cloud.stop(); return { ok: false, error: 'Sistem belum diinisialisasi. Minta administrator masuk lebih dulu.' }; }
     if (uname) this.clearFails(uname);
     this.user = this.pub({ username: prof.username, name: prof.name, role: prof.role, initials: prof.initials });
+    await roleCapsLoad();
     this.lastActive = Date.now(); this.saveSession(remember);
     // Inisialisasi data pertama tidak boleh menahan login. Tampilkan dashboard dahulu
     // agar dialog impor data lama dan progres sinkronisasi bisa digunakan secara normal.
@@ -7843,11 +7861,45 @@ function usrTable() {
     ]
   });
 }
+const ROLE_MATRIX = { draft:null, busy:false };
+ACT['usr.caps.edit'] = async () => {
+  if (!can('user.manage')) return;
+  await roleCapsLoad();
+  if (!ROLE_CAPS_READY) return toast('Hak akses server belum bisa dibaca. Coba lagi setelah tersinkron.', 'danger');
+  ROLE_MATRIX.draft = Object.fromEntries(Object.entries(CAPS).map(([cap, roles]) => [cap, roles.split(' ').filter(Boolean)]));
+  App.rerender();
+};
+ACT['usr.caps.toggle'] = el => {
+  if (!can('user.manage') || !ROLE_MATRIX.draft) return;
+  const cap=el.dataset.cap, role=el.dataset.role;
+  if (!Object.hasOwn(CAP_LABEL,cap) || !['supervisor','staff','viewer'].includes(role) || ROLE_CAP_LOCKED.has(cap)) return;
+  const s=new Set(ROLE_MATRIX.draft[cap] || []);
+  if(s.has(role)) s.delete(role); else s.add(role);
+  ROLE_MATRIX.draft[cap]=Array.from(s); App.rerender();
+};
+ACT['usr.caps.cancel'] = () => { ROLE_MATRIX.draft=null; App.rerender(); };
+ACT['usr.caps.save'] = async () => {
+  if (!can('user.manage') || !ROLE_MATRIX.draft || ROLE_MATRIX.busy || !Cloud.sb) return;
+  ROLE_MATRIX.busy=true;
+  const payload=Object.entries(ROLE_MATRIX.draft).map(([cap,roles])=>({cap,roles: Array.from(new Set(['admin',...roles]))}));
+  try {
+    const {error}=await Cloud.sb.rpc('ezp_set_role_caps',{p_changes:payload});
+    if(error) throw error;
+    ROLE_CAPS_READY=false;
+    await roleCapsLoad();
+    if(!ROLE_CAPS_READY) throw Error('Tersimpan, tetapi gagal membaca ulang data server.');
+    ROLE_MATRIX.draft=null;
+    logAct('Ubah hak akses per peran','','Matriks izin diperbarui');
+    toast('Hak akses tersimpan di server. Pengguna perlu memuat ulang untuk mendapatkan izin terbaru.','ok');
+    App.rerender();
+  } catch(e) { toast('Gagal menyimpan hak akses: '+(e.message || String(e)),'danger',7000); }
+  finally { ROLE_MATRIX.busy=false; }
+};
 function usrMatrix() {
-  const roles = Object.keys(ROLES), has = (cap, r) => (CAPS[cap] || '').split(' ').includes(r);
-  return h`<details class="panel usr-matrix"><summary><b>Hak akses per peran</b><span class="muted small">Apa yang boleh dilakukan tiap peran</span></summary>
+  const roles = Object.keys(ROLES), has = (cap, r) => (ROLE_MATRIX.draft ? ROLE_MATRIX.draft[cap] || [] : (CAPS[cap] || '').split(' ')).includes(r), editing=!!ROLE_MATRIX.draft;
+  return h`<details class="panel usr-matrix"><summary><b>Hak akses per peran</b><span class="muted small">Apa yang boleh dilakukan tiap peran</span></summary><div class="panel-b"><p class="small muted">Izin disimpan di Supabase. Pengelolaan pengguna, konfigurasi utama dan pemulihan data tetap khusus Superadmin.</p><div class="row">${editing ? h`${btn('Simpan hak akses','usr.caps.save',{icon:'save',cls:'primary'})}${btn('Batal','usr.caps.cancel')}` : btn('Atur hak akses','usr.caps.edit',{icon:'edit',cls:'primary'})}</div></div>
     <div class="tbl-wrap"><table class="table dense"><thead><tr><th>Kemampuan</th>${roles.map(r => h`<th class="c">${ROLES[r].replace(' (baca saja)', '')}</th>`)}</tr></thead>
-    <tbody>${Object.keys(CAP_LABEL).map(c => h`<tr><td>${CAP_LABEL[c]}</td>${roles.map(r => h`<td class="c">${has(c, r) ? h`<span style="color:var(--ok)" aria-label="Boleh">${ico('check', 16)}</span>` : h`<span class="muted" aria-label="Tidak">–</span>`}</td>`)}</tr>`)}</tbody></table></div></details>`;
+    <tbody>${Object.keys(CAP_LABEL).map(c => h`<tr><td>${CAP_LABEL[c]}</td>${roles.map(r => h`<td class="c">${editing && r !== 'admin' && !ROLE_CAP_LOCKED.has(c) ? h`<button type="button" class="chip ${has(c,r) ? 'on' : ''}" data-act="usr.caps.toggle" data-cap="${c}" data-role="${r}" aria-label="${has(c,r) ? 'Cabut':'Beri'} ${CAP_LABEL[c]} untuk ${ROLES[r]}">${has(c,r) ? ico('check',16) : '–'}</button>` : has(c, r) ? h`<span style="color:var(--ok)" aria-label="Boleh">${ico('check', 16)}</span>` : h`<span class="muted" aria-label="Tidak">–</span>`}</td>`)}</tr>`)}</tbody></table></div></details>`;
 }
 
 route(/^\/users$/, () => {
