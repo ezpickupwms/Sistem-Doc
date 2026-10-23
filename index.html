@@ -3117,11 +3117,24 @@ SUB['auth.login'] = async f => {
   const d = formObj(f), box = byId('loginErr'); box.innerHTML = '';
   const b = f.querySelector('button[type=submit]'); b.disabled = true; b.textContent = 'Memeriksa…';
   await new Promise(r => setTimeout(r, 30));
-  const r = await Auth.login(d.username, d.password, d.remember);
-  b.disabled = false; b.textContent = 'Masuk';
-  if (!r.ok) { box.innerHTML = toHtml(h`<div class="login-err" role="alert">${r.error}</div>`); byId('loginPw').select(); return; }
-  logAct('Masuk', 'Sesi', `Berhasil masuk sebagai ${ROLES[Auth.user.role]}`);
-  afterLogin(r.mustChange);
+  try {
+    const r = await Auth.login(d.username, d.password, d.remember);
+    if (!r.ok) {
+      box.textContent = r.error || 'Login gagal. Silakan coba lagi.';
+      box.setAttribute('role', 'alert');
+      const pw = byId('loginPw'); if (pw) pw.select();
+      return;
+    }
+    logAct('Masuk', 'Sesi', `Berhasil masuk sebagai ${ROLES[Auth.user.role]}`);
+    afterLogin(r.mustChange);
+  } catch (e) {
+    console.error('[EZP login]', e);
+    box.textContent = 'Proses login gagal: ' + (typeof authErr === 'function' ? authErr(e) : (e && e.message || 'Periksa koneksi server.'));
+    box.setAttribute('role', 'alert');
+  } finally {
+    b.disabled = false;
+    b.textContent = 'Masuk';
+  }
 };
 function afterLogin(mustChange) {
   byId('login').hidden = true; byId('app').hidden = false;
