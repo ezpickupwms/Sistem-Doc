@@ -303,6 +303,7 @@ ins.w { background: color-mix(in srgb, var(--ok) 28%, transparent); text-decorat
 .pg-hdr { top: var(--mt); } .pg-hdr.bleed { left: 0; right: 0; top: 0; }
 .pg-body { top: var(--bt); bottom: var(--bb); overflow: hidden; }
 .pg-ftr { bottom: var(--mf, var(--mb)); }
+.pg-ftr.bleed { left:0;right:0;bottom:0; }
 .pg[data-wm]:not([data-wm=""])::after { content: attr(data-wm); position: absolute; left: 0; right: 0; top: 40%; text-align: center; font: 800 96px Arial, sans-serif; letter-spacing: .12em; color: rgba(190, 20, 20, .075); transform: rotate(-30deg); pointer-events: none; }
 .pg-measure { box-sizing: border-box; }
 .pg-measure *, .pg * { box-sizing: border-box; }
@@ -1035,7 +1036,7 @@ const DEFAULT_DOC_CONFIG = {
   phone: '085792551200', email: 'ezdigitalsantara@gmail.com / bd@ezpickup.id', website: 'ezpickup.id',
   logo: '', showLogoInHeader: true,
   headerMode: 'text', headerImage: '', headerImageMaxMm: 45, headerImageFit: 'content',
-  footerMode: 'text', footerImage: '', footerImageMaxMm: 30,
+  footerMode: 'text', footerImage: '', footerImageMaxMm: 30, footerImageFit: 'content',
   footerText: 'Dokumen ini diterbitkan secara elektronik dan sah tanpa tanda tangan basah.', showFooter: true,
   sopFooterNote: 'Dokumen ini tidak terkendali jika dicetak tanpa dibubuhi stempel basah', showSopFooter: true,
   accent: '#cc0000', letterFont: 'Arial', letterSize: 11, letterMargins: { t: 15, r: 22, b: 15, l: 22 },
@@ -3543,10 +3544,11 @@ async function paginate(spec) {
     const hdrFirst = spec.headerFirst || spec.header, hdrRest = spec.header;
     const hh = fn => { const o = fn(1, 99, true); const wrap = `<div style="width:${o.bleed ? Wmm * PXMM : (o.w ? o.w * PXMM : bodyWpx)}px">${o.html}</div>`; host.innerHTML = wrap; return { h: host.firstElementChild.getBoundingClientRect().height, bleed: !!o.bleed, w: o.w || 0 }; };
     const H1 = hdrFirst ? hh(hdrFirst) : { h: 0 }, H2 = hdrRest ? hh(hdrRest) : { h: 0 };
-    const ftrMeasure = fn => fn ? (() => { host.innerHTML = `<div>${fn(1, 99)}</div>`; return host.firstElementChild.getBoundingClientRect().height; })() : 0;
+    const ftrBleed = !!(spec.ft && spec.ft.k === 'image' && spec.ft.bleed);
+    const ftrMeasure = fn => fn ? (() => { host.innerHTML = `<div style="width:${ftrBleed ? Wmm * PXMM : bodyWpx}px">${fn(1, 99)}</div>`; return host.firstElementChild.getBoundingClientRect().height; })() : 0;
     const ftrH = ftrMeasure(spec.footer), ftrH1 = spec.footerFirst === undefined ? ftrH : ftrMeasure(spec.footerFirst);
     const mf = (m.f == null ? m.b : m.f) * PXMM;                       // jarak kaki halaman dari tepi bawah
-    const botOf = F => Math.max(m.b * PXMM, mf + F + (F ? gap : 0));   // tepi bawah area isi
+    const botOf = F => Math.max(m.b * PXMM, (ftrBleed ? 0 : mf) + F + (F ? gap : 0));   // tepi bawah area isi
     const topOf = H => (H.bleed ? 0 : m.t * PXMM) + H.h + (H.h ? gap : 0);
     const availOf = (H, F) => Hmm * PXMM - topOf(H) - botOf(F) - tol;
     const A1 = availOf(H1, ftrH1), A2 = availOf(H2, ftrH);
@@ -3643,7 +3645,7 @@ async function paginate(spec) {
       const hd = (pg.first ? hdrFirst : hdrRest) ? (pg.first ? hdrFirst : hdrRest)(i + 1, N, pg.first) : { html: '' };
       const ft = pg.first && spec.footerFirst !== undefined ? (spec.footerFirst ? spec.footerFirst(1, N) : '') : (spec.footer ? spec.footer(i + 1, N) : '');
       const top = topOf(pg.H) / PXMM, bot = botOf(pg.F) / PXMM, hx = hd.w ? ` style="left:${((Wmm - hd.w) / 2).toFixed(2)}mm;right:${((Wmm - hd.w) / 2).toFixed(2)}mm"` : '';
-      return `<div class="pg ${spec.kind || 'sop'}${land ? ' land' : ''}" data-wm="${esc(wm)}" data-p="${i + 1}" style="${esc(fontCss)}--ml:${m.l}mm;--mr:${m.r}mm;--mt:${hd.bleed ? 0 : m.t}mm;--mb:${m.b}mm;--mf:${(m.f == null ? m.b : m.f)}mm;--bt:${top.toFixed(2)}mm;--bb:${bot.toFixed(2)}mm"><div class="pg-hdr${hd.bleed ? ' bleed' : ''}"${hx}>${hd.html}</div><div class="pg-body">${pg.blocks.map(x => x.html).join('')}</div><div class="pg-ftr">${ft}</div></div>`;
+      return `<div class="pg ${spec.kind || 'sop'}${land ? ' land' : ''}" data-wm="${esc(wm)}" data-p="${i + 1}" style="${esc(fontCss)}--ml:${m.l}mm;--mr:${m.r}mm;--mt:${hd.bleed ? 0 : m.t}mm;--mb:${m.b}mm;--mf:${(m.f == null ? m.b : m.f)}mm;--bt:${top.toFixed(2)}mm;--bb:${bot.toFixed(2)}mm"><div class="pg-hdr${hd.bleed ? ' bleed' : ''}"${hx}>${hd.html}</div><div class="pg-body">${pg.blocks.map(x => x.html).join('')}</div><div class="pg-ftr${ftrBleed ? ' bleed' : ''}">${ft}</div></div>`;
     });
     return { pages: htmlPages, n: N, land, spec };
   } finally { host.remove(); }
@@ -3758,7 +3760,10 @@ function ftrHTML(ft, pn, total, W) {
     return `<div class="ft-note" style="${css}">${esc(ft.text)}</div>`;
   }
   if (ft.k === 'text') return `<div class="ft-line"><span>${esc(ft.text || '')}</span>${ft.pages !== false ? `<span>Hal. ${pn}/${total}</span>` : ''}</div>`;
-  if (ft.k === 'image' && ft.src) { const b = imgBox(ft.src, W || 166, ft.maxMm || 30); return `<img alt="" data-fallback="hide" src="${esc(ft.src)}" style="display:block;margin:0 auto;width:${b.w}mm;height:${b.h}mm">`; }
+  if (ft.k === 'image' && ft.src) {
+    const fw = ft.bleed ? 210 : (W || 166), b = imgBox(ft.src, fw, ft.maxMm || 30);
+    return `<img alt="" data-fallback="hide" src="${esc(ft.src)}" style="display:block;margin:0 auto;width:${b.w}mm;height:${b.h}mm;object-fit:contain">`;
+  }
   return '';
 }
 function withHF(spec) {
@@ -3913,7 +3918,7 @@ function letterSpec(L) {
   if (sg.length) B.push({ t: 'sig', style: 'letter', align: L.sigAlign || 'center', signers: sg.map(x => ({ role: '', name: x.name, position: x.position, img: x.img })), keepPrev: true });
   if (L.cc && layout !== 'memo') B.push({ t: 'p', text: `Tembusan:\n${L.cc}`, size: 9.5 });
   const ftxt = cfg.showFooter !== false && cfg.footerText ? { k: 'text', text: cfg.footerText } : null;
-  const ft = cfg.footerMode === 'image' && cfg.footerImage ? { k: 'image', src: cfg.footerImage, maxMm: cfg.footerImageMaxMm || 30 } : ftxt;
+  const ft = cfg.footerMode === 'image' && cfg.footerImage ? { k: 'image', src: cfg.footerImage, maxMm: cfg.footerImageMaxMm || 30, bleed: cfg.footerImageFit === 'page' } : ftxt;
   return {
     kind: 'letter', land: false, margins: m, gap: 4, font: { family: cfg.letterFont ? `${cfg.letterFont}, "Liberation Sans", Helvetica, sans-serif` : '', size: sz },
     watermark: L.status === 'batal' ? 'BATAL' : (L.watermark || ''),
@@ -7975,7 +7980,7 @@ function cfLoad() {
 /* salinan bersih (angka valid) untuk pratinjau dan penyimpanan */
 function cfClean(d) {
   const c = clone(d), m = c.letterMargins || {};
-  c.headerImageFit = c.headerImageFit === 'page' ? 'page' : 'content';
+  c.headerImageFit = c.headerImageFit === 'page' ? 'page' : 'content'; c.footerImageFit = c.footerImageFit === 'page' ? 'page' : 'content';
   c.letterSize = cfNum(c.letterSize, 11, 8, 16); c.headerImageMaxMm = cfNum(c.headerImageMaxMm, 45, 10, 90); c.footerImageMaxMm = cfNum(c.footerImageMaxMm, 30, 8, 60);
   c.letterMargins = { t: cfNum(m.t, 15, 5, 60), r: cfNum(m.r, 22, 5, 60), b: cfNum(m.b, 15, 5, 60), l: cfNum(m.l, 22, 5, 60) };
   if (!/^#[0-9a-fA-F]{6}$/.test(c.accent || '')) c.accent = '#cc0000';
@@ -8121,7 +8126,7 @@ function cfLetterBrandHTML() { const d=CF.d, imgHead=d.headerMode === 'image', i
         <label class="fld"><span class="fld-l">Warna nama perusahaan</span><span class="row nowrap" style="gap:8px"><input class="input" type="color" name="accent" value="${/^#[0-9a-fA-F]{6}$/.test(d.accent || '') ? d.accent : '#cc0000'}" data-input="cf.f" style="width:64px;height:38px;padding:3px"><span class="mono small muted">${d.accent || ''}</span></span></label>`}
     </div></section>
     <section class="panel"><div class="panel-h"><h3>2. Kaki halaman surat</h3><span class="spacer"></span><div class="chips" role="group" aria-label="Jenis kaki halaman"><button type="button" class="chip ${imgFoot ? '' : 'on'}" data-act="cf.mode" data-k="footerMode" data-v="text">Teks</button><button type="button" class="chip ${imgFoot ? 'on' : ''}" data-act="cf.mode" data-k="footerMode" data-v="image">Gambar</button></div></div><div class="panel-b stack">
-      ${imgFoot ? h`${cfImgBlock('footerImage', 'Gambar kaki halaman', 'Gambar kaki selebar halaman. Otomatis diperkecil.')}${cfT('footerImageMaxMm', 'Tinggi maksimal gambar (mm)', { type: 'number', step: 1, min: 8, mode: 'numeric', help: '8–60 mm.' })}`
+      ${imgFoot ? h`${cfImgBlock('footerImage', 'Gambar kaki halaman', 'Gambar kaki selebar halaman. Otomatis diperkecil.')}${cfT('footerImageMaxMm', 'Tinggi maksimal gambar (mm)', { type: 'number', step: 1, min: 8, mode: 'numeric', help: '8–60 mm.' })}${F.select('footerImageFit', 'Lebar footer gambar', [['content','Mengikuti margin isi surat'],['page','Full bleed A4 (0 mm kiri, kanan, bawah)']], d.footerImageFit || 'content', { change:'cf.f' })}`
         : h`${F.check('showFooter', 'Tampilkan teks kaki halaman', d.showFooter !== false, { change: 'cf.f' })}${F.area('footerText', 'Teks kaki halaman', d.footerText, { rows: 2, input: 'cf.f' })}`}
     </div></section>
 </div>`; }
