@@ -2210,7 +2210,7 @@ const Cloud = {
     };
     this.sb = window.supabase.createClient(CLOUD_CFG.url, CLOUD_CFG.anonKey, {
       global: { fetch: boundedFetch },
-      auth: { storage: authStorage, storageKey: 'ezp9-auth', persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+      auth: { storage: authStorage, storageKey: 'ezp10-auth', persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
       realtime: { params: { eventsPerSecond: 10 } }
     });
     this.sb.auth.onAuthStateChange(ev => { if (ev === 'SIGNED_OUT' && Auth.user && !Auth.leaving) setTimeout(() => { if (Auth.user && !Auth.leaving) Auth.forceOut('Sesi Anda sudah berakhir. Silakan masuk lagi.'); }, 0); });
@@ -8972,22 +8972,17 @@ async function boot() {
     el.innerHTML = '<section class="login-form" style="grid-column:1/-1"><div class="login-card stack"><h2>Koneksi server belum dikonfigurasi</h2><p class="muted">Buka berkas HTML ini dan isi <b>url</b> serta <b>anonKey</b> pada blok <code>window.EZP_CONFIG</code> di bagian atas (Supabase › Project Settings › API). Pastikan pustaka Supabase termuat (perlu internet).</p></div></section>';
     return;
   }
-  let restored = false;
-  try { restored = await Auth.restore(); } catch (e) { console.error(e); }
-  byId('boot').hidden = true;
-  if (restored) {
-    byId('login').hidden = true; byId('app').hidden = false;
-    if (!location.hash) location.hash = '#/dashboard';
-    App.lastHash = location.hash; App.render();
-    if (Auth.rec() && Auth.rec().mustChange) forcePasswordChange(); else migrationNotice();
-  } else showLogin();
+  // P0: jangan blokir halaman login dengan pemulihan sesi SDK yang bisa macet.
+  // Pengguna login kembali sekali setelah upgrade penyimpanan sesi.
+  showLogin();
 }
 const bootWatchdog = setTimeout(() => {
   const el = document.getElementById('boot');
   if (el && !el.hidden) {
-    el.innerHTML = '<div style="max-width:560px;margin:auto;padding:24px;font:14px/1.6 system-ui;text-align:left"><h2>Memuat terlalu lama</h2><p>Server belum merespons. Periksa internet, akses CDN Supabase, atau buka melalui GitHub Pages (HTTPS).</p><button onclick="location.reload()">Coba lagi</button></div>';
+    console.warn('Boot watchdog: kembali ke login tanpa reload.');
+    showLogin('Pemulihan awal terlalu lama. Silakan masuk ulang.');
   }
-}, 15000);
+}, 8000);
 boot().then(() => clearTimeout(bootWatchdog)).catch(e => {
   clearTimeout(bootWatchdog);
   console.error('Boot gagal:', e);
