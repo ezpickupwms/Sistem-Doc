@@ -3086,6 +3086,12 @@ function renderSide() {
       if (!items.length) return '';
       return h`${g.g ? h`<div class="nav-g">${g.g}</div>` : ''}${items.map(([id, label, ic, to]) => h`<a href="#${to}" class="${App.cur && App.cur.nav === id ? 'on' : ''}"${raw(App.cur && App.cur.nav === id ? ' aria-current="page"' : '')}>${ico(ic, 18)}<span>${label}</span>${cnt[id] ? h`<span class="cnt">${cnt[id]}</span>` : ''}</a>`)}`;
     })}</nav>
+    <div class="nav-g">PORTAL EZPICKUP</div>
+    <nav class="nav" aria-label="Navigasi lintas aplikasi">
+      <a href="https://ezpickupwms.github.io/wmsmaterial/" target="_blank" rel="noopener noreferrer" aria-label="Buka WMS Material di tab baru" title="WMS Material menggunakan login tersendiri">
+        ${ico('warehouse', 18)}<span>WMS Material ↗</span>
+      </a>
+    </nav>
     <div class="side-foot"><b>v${APP.version}</b> · build ${APP.build}<br>Terhubung ke server</div>`);
 }
 function renderTop() {
