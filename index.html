@@ -3933,8 +3933,8 @@ function letterSpec(L) {
   B.push({ t: 'spacer', h: 2 });
   const sg = arr(L.signers).filter(x => x && (x.name || x.position));
   if (layout === 'surat' && sg.length) { B.push({ t: 'p', text: `Hormat kami,${cfg.companyName ? '\n**' + noStar(cfg.companyName) + '**' : ''}`, keepNext: true, align: 'left' }); }
-  if (sg.length) B.push({ t: 'sig', style: 'letter', align: L.sigAlign || 'center', signers: sg.map(x => ({ role: '', name: x.name, position: x.position, img: x.img })), keepPrev: true });
-  if (L.cc && layout !== 'memo') B.push({ t: 'p', text: `Tembusan:\n${L.cc}`, size: 9.5 });
+  if (sg.length) B.push({ t: 'sig', style: 'letter', align: L.sigAlign || 'center', signers: sg.map(x => ({ role: x.role || 'Penandatangan', name: x.name, position: x.position, img: x.img })), keepPrev: true });
+  if (L.cc && layout !== 'memo') B.push({ t: 'p', text: 'Tembusan:\n' + linesOf(L.cc).map((s,i) => (i+1)+'. '+s).join('\n'), size: 9.5 });
   const ftxt = cfg.showFooter !== false && cfg.footerText ? { k: 'text', text: cfg.footerText } : null;
   const ft = cfg.footerMode === 'image' && cfg.footerImage ? { k: 'image', src: cfg.footerImage, maxMm: cfg.footerImageMaxMm || 30, bleed: cfg.footerImageFit === 'page' } : ftxt;
   return {
@@ -5904,8 +5904,8 @@ function letterVars(t, S, no) {
 }
 const ltBody = (t, S, no) => fillTemplate(t.body, letterVars(t, S, no)).replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim();
 function ltSigners(S) {
-  const out = DB.signers.slice().sort((a, b) => a.order - b.order).filter(s => arr(S.signerIds).includes(s.id)).map(s => ({ sid: s.id, name: s.name, position: s.position }));
-  linesOf(S.extra).forEach(l => { const parts = l.split('|'), n = parts.shift().trim(); if (n) out.push({ sid: '', name: n, position: parts.join('|').trim() }); });
+  const out = DB.signers.slice().sort((a, b) => a.order - b.order).filter(s => arr(S.signerIds).includes(s.id)).map(s => ({ sid: s.id, role: s.role || 'Penandatangan', name: s.name, position: s.position }));
+  linesOf(S.extra).forEach(l => { const parts = l.split('|'), n = parts.shift().trim(); if (n) out.push({ sid: '', name: n, position: parts.join('|').trim(), role: 'Penandatangan' }); });
   return out;
 }
 function composeLetter(S, o) {
@@ -6066,7 +6066,7 @@ function ltItemsPanel(S, t) {
 function ltFormHTML(S, t) {
   const lay = t.layout || 'surat', pk = S.useManual ? { no: S.manualNo.trim() || '—' } : peekNumber(t.id, S.date);
   const recip = lay === 'ba' ? '' : lay === 'memo'
-    ? h`<div class="form-grid">${F.text('to', 'Kepada', S.to, { req: true, input: 'lt.f', ph: 'mis. Seluruh SPV Gudang' })}${F.text('from', 'Dari', S.from, { input: 'lt.f', ph: 'mis. Manager Operasional' })}${F.text('cc', 'Tembusan', S.cc, { input: 'lt.f', ph: 'opsional', cls: 'full' })}</div>`
+    ? h`<div class="form-grid">${F.text('to', 'Kepada', S.to, { req: true, input: 'lt.f', ph: 'mis. Seluruh SPV Gudang' })}${F.text('from', 'Dari', S.from, { input: 'lt.f', ph: 'mis. Manager Operasional' })}${F.area('cc', 'Tembusan (satu penerima per baris)', S.cc, { input: 'lt.f', ph: 'Direktur Operasional\nArsip', rows: 3, cls: 'full' })}</div>`
     : h`<div class="form-grid">${F.text('to', 'Kepada Yth.', S.to, { req: true, input: 'lt.f', ph: 'mis. PT Contoh Klien — Bpk. Andi' })}${F.text('lampiran', 'Lampiran', S.lampiran, { input: 'lt.f', ph: 'mis. 1 berkas' })}${F.area('toAddr', 'Alamat tujuan', S.toAddr, { rows: 2, input: 'lt.f', cls: 'full', ph: 'opsional' })}${F.text('cc', 'Tembusan', S.cc, { input: 'lt.f', ph: 'opsional', cls: 'full' })}</div>`;
   const dyn = arr(t.fields).map(f => {
     const name = 'fields.' + f.k, val = S.fields[f.k] == null ? '' : S.fields[f.k], o = { req: f.req, ph: f.ph, input: 'lt.f' };
@@ -6119,7 +6119,7 @@ route(/^\/letters$/, (m, q) => {
    35b-v-bulk.js — surat massal dari tabel (Excel .xlsx / CSV / tempel): nomor berurutan,
    cetak gabungan, unduh ZIP berisi berkas Word per surat
    ===================================================================== */
-const BK = { typeId: '', date: '', text: '', signerIds: null, extra: '', result: null };
+const BK = { typeId: '', date: '', text: '', signerIds: null, extra: '', sigAlign: 'center', cc: '', previewIndex: 0, result: null };
 const bkNorm = s => String(s == null ? '' : s).toLowerCase().replace(/[^a-z0-9]+/g, '');
 const BK_ALIAS = {
   to: ['kepada', 'kepadayth', 'tujuan', 'to', 'penerima', 'namapenerima'], toAddr: ['alamat', 'alamattujuan', 'alamatpenerima', 'toaddr'],
@@ -6188,7 +6188,7 @@ function bkPlan() {
   });
   const letters = groups.map(g => {
     const S = ltBlank(t.id, { date: B.date, signerIds: B.signerIds, extra: B.extra, fields: g.fields });
-    S.to = g.to; S.toAddr = g.meta.toAddr || ''; S.from = g.meta.from || ''; S.cc = g.meta.cc || ''; S.lampiran = g.meta.lampiran || '';
+    S.to = g.to; S.toAddr = g.meta.toAddr || ''; S.from = g.meta.from || ''; S.cc = g.meta.cc || B.cc || ''; S.sigAlign = B.sigAlign || 'center'; S.lampiran = g.meta.lampiran || '';
     if (g.meta.subject) S.subject = g.meta.subject; if (g.meta.date && validISO(g.meta.date)) S.date = g.meta.date;
     Object.keys(g.fields).forEach(k => { S.fields[k] = g.fields[k]; });
     if (hasItems) S.items = g.items.length ? g.items : [Array(t.items.length).fill('')];
@@ -6215,6 +6215,8 @@ function bkPlanHTML() {
 function bkRefreshPlan() { const el = byId('bkPlan'); if (el) el.innerHTML = toHtml(bkPlanHTML()); const b = byId('bkGo'); if (b) { const p = bkPlan(); b.disabled = !(p.letters && p.letters.length && !p.errors); } }
 INP['bk.text'] = el => { bkState().text = el.value; BK.result = null; bkRefreshPlan(); };
 CHG['bk.type'] = el => { bkState().typeId = el.value; BK.result = null; App.rerender(); };
+CHG['bk.align'] = el => { BK.sigAlign=el.value; bkRefreshPlan(); };
+INP['bk.cc'] = el => { BK.cc=el.value; bkRefreshPlan(); };
 CHG['bk.date'] = el => { bkState().date = el.value; bkRefreshPlan(); };
 INP['bk.extra'] = el => { bkState().extra = el.value; bkRefreshPlan(); };
 CHG['bk.sig'] = el => { const B = bkState(), set = new Set(B.signerIds); if (el.checked) set.add(el.dataset.id); else set.delete(el.dataset.id); B.signerIds = Array.from(set); };
@@ -6298,11 +6300,23 @@ ACT['bk.xlsx'] = async () => {
   const recs = bkRecs(); if (!recs.length) return;
   await exportTable({ title: 'Daftar surat massal', sheet: 'Surat massal', file: `daftar-surat-massal-${todayISO()}.xlsx`, types: '-d---', head: ['Nomor', 'Tanggal', 'Jenis', 'Perihal', 'Kepada'], rows: recs.map(l => [l.no, l.date, l.typeName, l.subject, l.to]) });
 };
+CHG['bk.preview'] = el => { BK.previewIndex=Math.max(0,Number(el.value)||0); bkPreviewRefresh(); };
+async function bkPreviewRefresh() {
+  const el=byId('bkPreview'), p=bkPlan(); if (!el || !p.letters || !p.letters.length) return;
+  const row=p.letters[Math.min(BK.previewIndex,p.letters.length-1)];
+  try {
+    const L=composeLetter(row.S,{no:row.num.no}); L.watermark='CONTOH';
+    const result=await buildResult(letterSpec(ltRender(L)));
+    if (!byId('bkPreview')) return;
+    el.innerHTML=toHtml(h`${docToolbar(result,'')}${docStageHTML(result)}`);
+    mountDoc(result);
+  } catch(e) { el.textContent='Preview gagal: '+(e.message || String(e)); }
+}
 function ltBulkView() {
   const B = bkState(), t = letterType(B.typeId), sg = DB.signers.slice().sort((a, b) => a.order - b.order), p0 = bkPlan();
   const cols = bkColumns(t), res = bkRecs();
   return {
-    title: 'Surat massal',
+    title: 'Surat massal', post: () => bkPreviewRefresh(),
     html: h`${pageHead('Buat surat & memo', 'Satu tabel Excel/CSV menjadi banyak surat bernomor berurutan.', '')}
     ${tabsHTML(ltTabs(), 'massal', 'lt.tab')}
     ${res.length ? h`<div class="callout ok">${ico('check', 18)}<div><b>${res.length} surat berhasil diterbitkan</b> (${res[0].no}${res.length > 1 ? ' s/d ' + res[res.length - 1].no : ''}).<div class="small">Cetak gabungan atau unduh ZIP berisi satu berkas Word per surat. Semua surat juga ada di register.</div>
@@ -6311,14 +6325,14 @@ function ltBulkView() {
       <section class="panel"><div class="panel-h"><h3>1 · Jenis dokumen & penandatangan</h3></div><div class="panel-b stack">
         <div class="form-grid">${F.select('typeId', 'Jenis dokumen', DB.letterTypes.map(x => [x.id, x.name]), t.id, { change: 'bk.type' })}${F.date('date', 'Tanggal dokumen', B.date, { change: 'bk.date', help: 'Kolom "Tanggal" pada tabel (bila ada) menggantikan tanggal ini.' })}</div>
         <div class="stack-sm"><span class="fld-l">Penandatangan</span>${sg.map(s => h`<label class="chk"><input type="checkbox" data-change="bk.sig" data-id="${s.id}"${raw(arr(B.signerIds).includes(s.id) ? ' checked' : '')}><span><b>${s.name}</b> <small class="fld-h" style="display:inline">${s.position}</small></span></label>`)}</div>
-        ${F.area('extra', 'Penandatangan tambahan (opsional)', B.extra, { rows: 2, input: 'bk.extra', ph: 'Nama | Jabatan — satu per baris' })}
+        ${F.area('extra', 'Penandatangan tambahan (opsional)', B.extra, { rows: 2, input: 'bk.extra', ph: 'Nama | Jabatan — satu per baris' })}${F.select('sigAlign','Posisi tanda tangan',[['left','Kiri'],['center','Tengah'],['right','Kanan']],B.sigAlign || 'center',{change:'bk.align'})}${F.area('cc','Tembusan bawaan (satu per baris)',B.cc || '',{rows:3,input:'bk.cc',ph:'Direktur\nArsip'})}
       </div></section>
       <section class="panel"><div class="panel-h"><h3>2 · Data tabel</h3><span class="spacer"></span>${btn('Contoh tabel', 'bk.sample', { icon: 'download', cls: 'sm' })}${btn('Pilih berkas Excel / CSV', 'bk.file', { icon: 'upload', cls: 'sm' })}${B.text ? btn('Kosongkan', 'bk.clear', { icon: 'x', cls: 'sm ghost' }) : ''}</div><div class="panel-b stack-sm">
         <textarea class="textarea mono" rows="9" name="bktext" aria-label="Data tabel" placeholder="Salin dari Excel (termasuk baris judul) lalu tempel di sini…" data-input="bk.text" data-keep="bk.text" spellcheck="false" style="font-size:12.5px">${B.text}</textarea>
         <p class="small muted" style="margin:0">Baris pertama = judul kolom. Pilih berkas Excel (.xlsx) atau CSV, atau tempel hasil salin dari Excel. Pemisah tab, titik koma, atau koma dikenali otomatis. Maksimal 500 baris.</p></div></section>
       <section class="panel"><div class="panel-h"><h3>3 · Periksa & terbitkan</h3><span class="spacer"></span><button type="button" class="btn primary" id="bkGo" data-act="bk.issue"${raw(p0.letters && p0.letters.length && !p0.errors ? '' : ' disabled')}>${ico('send', 16)}<span>Terbitkan</span></button></div><div class="panel-b" id="bkPlan">${bkPlanHTML()}</div></section>
     </div>
-    <aside class="stack sticky-col"><section class="panel"><div class="panel-h"><h3>Kolom untuk "${t.name}"</h3></div><div class="panel-b stack-sm"><p class="small muted" style="margin:0">Judul kolom boleh huruf besar/kecil. Kolom yang tidak dikenali diabaikan.</p>
+    <aside class="stack sticky-col"><section class="panel"><div class="panel-h"><h3>Preview sebelum terbit</h3></div><div class="panel-b stack-sm"><p class="small muted">Pilih salah satu surat dari rencana untuk memeriksa posisi tanda tangan, tembusan, dan halaman A4.</p>${p0.letters && p0.letters.length ? h`${F.select('previewIndex','Surat',p0.letters.slice(0,500).map((l,i)=>[String(i),String(i+1)+' · '+(l.S.to || l.S.subject)]),String(Math.min(B.previewIndex,p0.letters.length-1)),{change:'bk.preview'})}<div id="bkPreview" class="doc-wait">Menyusun preview…</div>` : h`<p class="small muted">Masukkan data terlebih dahulu.</p>`}</div></section><section class="panel"><div class="panel-h"><h3>Kolom untuk "${t.name}"</h3></div><div class="panel-b stack-sm"><p class="small muted" style="margin:0">Judul kolom boleh huruf besar/kecil. Kolom yang tidak dikenali diabaikan.</p>
       <ul class="lint">${cols.map(([c, d]) => h`<li><span class="ic">${ico('check', 14)}</span><span><b>${c}</b><br><span class="muted">${d}</span></span></li>`)}</ul>
       ${arr(t.items).length ? h`<div class="callout" style="margin:0">${ico('info', 18)}<div class="small">Template ini memakai tabel rincian: baris dengan <b>penerima yang sama</b> digabung menjadi satu surat, satu baris tabel per barisnya.</div></div>` : ''}</div></section></aside></div>`
   };
