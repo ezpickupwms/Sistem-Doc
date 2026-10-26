@@ -6067,7 +6067,7 @@ function ltFormHTML(S, t) {
   const lay = t.layout || 'surat', pk = S.useManual ? { no: S.manualNo.trim() || '—' } : peekNumber(t.id, S.date);
   const recip = lay === 'ba' ? '' : lay === 'memo'
     ? h`<div class="form-grid">${F.text('to', 'Kepada', S.to, { req: true, input: 'lt.f', ph: 'mis. Seluruh SPV Gudang' })}${F.text('from', 'Dari', S.from, { input: 'lt.f', ph: 'mis. Manager Operasional' })}${F.area('cc', 'Tembusan (satu penerima per baris)', S.cc, { input: 'lt.f', ph: 'Direktur Operasional\nArsip', rows: 3, cls: 'full' })}</div>`
-    : h`<div class="form-grid">${F.text('to', 'Kepada Yth.', S.to, { req: true, input: 'lt.f', ph: 'mis. PT Contoh Klien — Bpk. Andi' })}${F.text('lampiran', 'Lampiran', S.lampiran, { input: 'lt.f', ph: 'mis. 1 berkas' })}${F.area('toAddr', 'Alamat tujuan', S.toAddr, { rows: 2, input: 'lt.f', cls: 'full', ph: 'opsional' })}${F.text('cc', 'Tembusan', S.cc, { input: 'lt.f', ph: 'opsional', cls: 'full' })}</div>`;
+    : h`<div class="form-grid">${F.text('to', 'Kepada Yth.', S.to, { req: true, input: 'lt.f', ph: 'mis. PT Contoh Klien — Bpk. Andi' })}${F.text('lampiran', 'Lampiran', S.lampiran, { input: 'lt.f', ph: 'mis. 1 berkas' })}${F.area('toAddr', 'Alamat tujuan', S.toAddr, { rows: 2, input: 'lt.f', cls: 'full', ph: 'opsional' })}${F.area('cc', 'Tembusan (satu penerima per baris)', S.cc, { input: 'lt.f', ph: 'Direktur\nArsip', rows: 3, cls: 'full' })}</div>`;
   const dyn = arr(t.fields).map(f => {
     const name = 'fields.' + f.k, val = S.fields[f.k] == null ? '' : S.fields[f.k], o = { req: f.req, ph: f.ph, input: 'lt.f' };
     if (f.t === 'textarea') return F.area(name, f.l, val, Object.assign(o, { rows: f.rows || 4, cls: 'full' }));
