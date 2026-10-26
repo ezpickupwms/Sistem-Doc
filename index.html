@@ -1034,7 +1034,7 @@ const DEFAULT_DOC_CONFIG = {
   companyName: 'PT. EZDIGITAL LOGISTIK SANTARA', shortName: 'EZPickup', city: 'Kuningan',
   address: 'Jl. Siliwangi No. 265, Cijoho, Kec. Kuningan, Kab. Kuningan, Jawa Barat, 45513',
   phone: '085792551200', email: 'ezdigitalsantara@gmail.com / bd@ezpickup.id', website: 'ezpickup.id',
-  logo: '', showLogoInHeader: true,
+  logo: '', appIcon: '', showLogoInHeader: true,
   headerMode: 'text', headerImage: '', headerImageMaxMm: 45, headerImageFit: 'content',
   footerMode: 'text', footerImage: '', footerImageMaxMm: 30, footerImageFit: 'content',
   footerText: 'Dokumen ini diterbitkan secara elektronik dan sah tanpa tanda tangan basah.', showFooter: true,
@@ -3072,6 +3072,9 @@ function navCounts() {
 
 /* ---------- Sidebar & topbar ---------- */
 function renderSide() {
+  const favicon = document.querySelector('link[rel="icon"]');
+  if (favicon && !favicon.dataset.defaultIcon) favicon.dataset.defaultIcon = favicon.href;
+  if (favicon) favicon.href = (DB.docConfig && (DB.docConfig.appIcon || DB.docConfig.logo)) || favicon.dataset.defaultIcon || favicon.href;
   const cnt = navCounts();
   byId('side').innerHTML = toHtml(h`
     <a class="brand" href="#/dashboard" aria-label="Ke ringkasan">
@@ -6212,14 +6215,15 @@ function bkPlanHTML() {
     ${p.letters.length > 60 ? h`<div class="small muted">Menampilkan 60 dari ${p.letters.length} surat.</div>` : ''}
   </div>`;
 }
-function bkRefreshPlan() { const el = byId('bkPlan'); if (el) el.innerHTML = toHtml(bkPlanHTML()); const b = byId('bkGo'); if (b) { const p = bkPlan(); b.disabled = !(p.letters && p.letters.length && !p.errors); } }
+let bkPreviewTimer = null;
+function bkRefreshPlan() { const el = byId('bkPlan'); if (el) el.innerHTML = toHtml(bkPlanHTML()); const b = byId('bkGo'); if (b) { const p = bkPlan(); b.disabled = !(p.letters && p.letters.length && !p.errors); } clearTimeout(bkPreviewTimer); bkPreviewTimer = setTimeout(bkPreviewRefresh, 450); }
 INP['bk.text'] = el => { bkState().text = el.value; BK.result = null; bkRefreshPlan(); };
 CHG['bk.type'] = el => { bkState().typeId = el.value; BK.result = null; App.rerender(); };
 CHG['bk.align'] = el => { BK.sigAlign=el.value; bkRefreshPlan(); };
 INP['bk.cc'] = el => { BK.cc=el.value; bkRefreshPlan(); };
 CHG['bk.date'] = el => { bkState().date = el.value; bkRefreshPlan(); };
 INP['bk.extra'] = el => { bkState().extra = el.value; bkRefreshPlan(); };
-CHG['bk.sig'] = el => { const B = bkState(), set = new Set(B.signerIds); if (el.checked) set.add(el.dataset.id); else set.delete(el.dataset.id); B.signerIds = Array.from(set); };
+CHG['bk.sig'] = el => { const B = bkState(), set = new Set(B.signerIds); if (el.checked) set.add(el.dataset.id); else set.delete(el.dataset.id); B.signerIds = Array.from(set); bkRefreshPlan(); };
 ACT['bk.file'] = async () => {
   const f = await pickFile(TABLE_ACCEPT); if (!f) return;
   if (f.size > 5 * 1024 * 1024) return toast('Berkas terlalu besar (maks. 5 MB).', 'danger');
@@ -6301,16 +6305,18 @@ ACT['bk.xlsx'] = async () => {
   await exportTable({ title: 'Daftar surat massal', sheet: 'Surat massal', file: `daftar-surat-massal-${todayISO()}.xlsx`, types: '-d---', head: ['Nomor', 'Tanggal', 'Jenis', 'Perihal', 'Kepada'], rows: recs.map(l => [l.no, l.date, l.typeName, l.subject, l.to]) });
 };
 CHG['bk.preview'] = el => { BK.previewIndex=Math.max(0,Number(el.value)||0); bkPreviewRefresh(); };
+async let bkPreviewToken=0;
 async function bkPreviewRefresh() {
-  const el=byId('bkPreview'), p=bkPlan(); if (!el || !p.letters || !p.letters.length) return;
+  const token=++bkPreviewToken, el=byId('bkPreview'), p=bkPlan(); if (!el) return;
+  if (!p.letters || !p.letters.length) { el.textContent='Masukkan data yang valid untuk melihat preview.'; return; }
   const row=p.letters[Math.min(BK.previewIndex,p.letters.length-1)];
   try {
     const L=composeLetter(row.S,{no:row.num.no}); L.watermark='CONTOH';
     const result=await buildResult(letterSpec(ltRender(L)));
-    if (!byId('bkPreview')) return;
+    if (token!==bkPreviewToken || byId('bkPreview')!==el) return;
     el.innerHTML=toHtml(h`${docToolbar(result,'')}${docStageHTML(result)}`);
     mountDoc(result);
-  } catch(e) { el.textContent='Preview gagal: '+(e.message || String(e)); }
+  } catch(e) { if (token===bkPreviewToken && byId('bkPreview')===el) el.textContent='Preview gagal: '+(e.message || String(e)); }
 }
 function ltBulkView() {
   const B = bkState(), t = letterType(B.typeId), sg = DB.signers.slice().sort((a, b) => a.order - b.order), p0 = bkPlan();
@@ -8037,7 +8043,7 @@ ACT['usr.del'] = async el => {
 const CF = { d: null, sg: null, dirty: false, tab: 'kop', prev: 'surat', token: 0, chain: Promise.resolve(), timer: null, padDrawing: false };
 const cfDirty = () => CF.dirty;
 const CF_FONTS = ['Arial', 'Calibri', 'Cambria', 'Georgia', 'Tahoma', 'Times New Roman', 'Verdana'];
-const CF_IMG = { logo: { w: 480, h: 480, budget: 140000, label: 'logo' }, headerImage: { w: 1600, h: 400, budget: 520000, label: 'gambar kop' }, footerImage: { w: 1600, h: 300, budget: 420000, label: 'gambar kaki halaman' }, sig: { w: 560, h: 240, budget: 160000, label: 'tanda tangan' } };
+const CF_IMG = { appIcon: { w: 256, h: 256, budget: 100000, label: 'favicon' }, logo: { w: 480, h: 480, budget: 140000, label: 'logo' }, headerImage: { w: 1600, h: 400, budget: 520000, label: 'gambar kop' }, footerImage: { w: 1600, h: 300, budget: 420000, label: 'gambar kaki halaman' }, sig: { w: 560, h: 240, budget: 160000, label: 'tanda tangan' } };
 const cfNum = (v, def, lo, hi) => { const s = String(v == null ? '' : v).trim().replace(',', '.'), n = Number(s); return s !== '' && isFinite(n) ? clamp(n, lo, hi) : def; };
 
 function cfLoad() {
@@ -8184,7 +8190,7 @@ function cfIdentityHTML() { const d = CF.d; return h`<div class="stack">    <sec
       ${cfT('phone', 'Telepon', { max: 40 })}${cfT('email', 'Email', { max: 120 })}${cfT('website', 'Situs web', { cls: 'full', max: 80 })}
     </div></div></section>
     <section class="panel"><div class="panel-h"><h3>Logo perusahaan</h3></div><div class="panel-b stack">${cfImgBlock('logo', 'Logo', 'PNG/JPG/SVG; latar transparan paling rapi. Otomatis diperkecil.')}
-      ${F.check('showLogoInHeader', 'Tampilkan logo di kop surat dan header SOP', d.showLogoInHeader !== false, { change: 'cf.f' })}</div></section>
+      ${F.check('showLogoInHeader', 'Tampilkan logo di kop surat dan header SOP', d.showLogoInHeader !== false, { change: 'cf.f' })}<div class="divider"></div><b>Ikon aplikasi dan tab browser</b>${cfImgBlock('appIcon','Favicon aplikasi','Unggah ikon persegi PNG/JPG/WEBP; bila kosong menggunakan logo perusahaan.')}</div></section>
 </div>`; }
 function cfLetterBrandHTML() { const d=CF.d, imgHead=d.headerMode === 'image', imgFoot=d.footerMode === 'image'; return h`<div class="stack">    <section class="panel"><div class="panel-h"><h3>1. Kop surat keluar &amp; memo</h3><span class="spacer"></span><div class="chips" role="group" aria-label="Jenis kop"><button type="button" class="chip ${imgHead ? '' : 'on'}" data-act="cf.mode" data-k="headerMode" data-v="text">Kop teks</button><button type="button" class="chip ${imgHead ? 'on' : ''}" data-act="cf.mode" data-k="headerMode" data-v="image">Kop gambar</button></div></div><div class="panel-b stack">
       ${imgHead ? h`${cfImgBlock('headerImage', 'Gambar kop', 'Unggah kop lengkap termasuk logo dan informasi perusahaan. Gambar diperkecil proporsional; logo teks otomatis tidak ditambahkan lagi agar tidak ganda.')}
