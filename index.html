@@ -2531,7 +2531,7 @@ const CAPS = {
   'sop.delete': 'admin', 'sop.export': 'admin supervisor staff viewer',
   'letter.create': 'admin supervisor staff', 'letter.void': 'admin supervisor', 'letter.template': 'admin',
   'form.manage': 'admin supervisor', 'kpi.input': 'admin supervisor staff', 'kpi.manage': 'admin supervisor',
-  'audit.manage': 'admin supervisor', 'config.manage': 'admin', 'user.manage': 'admin',
+  'audit.manage': 'admin supervisor', 'config.manage': 'admin', 'document.brand.manage': 'admin supervisor', 'user.manage': 'admin',
   'data.backup': 'admin supervisor', 'data.restore': 'admin', 'activity.view': 'admin supervisor'
 };
 const ROLE_CAP_LOCKED = new Set(['user.manage','config.manage','data.restore']);
@@ -2985,7 +2985,7 @@ const NAV = [
     ['kpi', 'KPI & sasaran mutu', 'bars', '/kpi'],
     ['audit', 'Audit & tindakan korektif', 'checksq', '/audit']] },
   { g: 'Sistem', items: [
-    ['config', 'Kop & tata letak', 'layout', '/config', 'config.manage'],
+    ['config', 'Kop & tata letak', 'layout', '/config', 'document.brand.manage'],
     ['users', 'Pengguna', 'users', '/users', 'user.manage'],
     ['activity', 'Log aktivitas', 'history', '/activity', 'activity.view'],
     ['settings', 'Pengaturan & data', 'settings', '/settings'],
@@ -7840,7 +7840,7 @@ const CAP_LABEL = {
   'sop.view': 'Melihat SOP', 'sop.export': 'Cetak & unduh dokumen', 'sop.propose': 'Mengusulkan revisi SOP', 'sop.create': 'Membuat SOP baru', 'sop.approve': 'Menyetujui revisi SOP', 'sop.delete': 'Menghapus SOP',
   'letter.create': 'Membuat surat & memo', 'letter.void': 'Membatalkan surat terbit', 'letter.template': 'Mengubah template surat', 'form.manage': 'Mengelola pustaka formulir',
   'kpi.input': 'Mengisi data KPI', 'kpi.manage': 'Mengelola definisi KPI', 'audit.manage': 'Mengelola audit & tindakan korektif',
-  'config.manage': 'Mengatur kop, penandatangan & kebijakan', 'user.manage': 'Mengelola pengguna', 'data.backup': 'Mengunduh backup', 'data.restore': 'Memulihkan data', 'activity.view': 'Melihat log aktivitas'
+  'document.brand.manage': 'Mengatur kop, format dokumen & penandatangan', 'config.manage': 'Mengatur kebijakan sistem (Superadmin)', 'user.manage': 'Mengelola pengguna', 'data.backup': 'Mengunduh backup', 'data.restore': 'Memulihkan data', 'activity.view': 'Melihat log aktivitas'
 };
 const usrIsDefaultPw = u => !!u.mustChange && !u.pwChanged;
 const usrRoleKind = r => ({ admin: 'danger', supervisor: 'info', staff: 'ok', viewer: 'mute' }[r] || 'mute');
@@ -8330,7 +8330,7 @@ function cfChangeSummary(oldC, newC, oldS, newS) {
   return out.join(', ');
 }
 function cfSave() {
-  if (!can('config.manage') || !CF.d) return false;
+  if (!can('document.brand.manage') || !CF.d) return false;
   const issues = cfValidate(), err = issues.find(x => x[0] === 'error');
   if (err) { if (err[2] && err[2] !== CF.tab) { CF.tab = err[2]; cfRefreshForm(); } toast(err[1], 'danger', 6500); return false; }
   const cfg = cfClean(CF.d), sg = cfCleanSigners(CF.sg), snap = { c: DB.docConfig, s: DB.signers }, sum0 = cfChangeSummary(snap.c, cfg, snap.s, sg);
@@ -8363,7 +8363,7 @@ route(/^\/config$/, () => {
     <div class="grid g-gen"><div class="stack"><div id="cfGroups">${cfGroupHTML()}</div><div id="cfTabs">${tabsHTML(cfTabsItems(), CF.tab, 'cf.tab')}</div><div id="cfBody">${cfBodyHTML()}</div></div>
       <div class="sticky-col stack"><div class="row" id="cfPrevBar">${cfPrevBarHTML()}</div><div id="cfPrev"><div class="doc-wait"><span class="spin"></span>Menyusun pratinjau…</div></div></div></div></div>`
   };
-}, { nav: 'config', cap: 'config.manage' });
+}, { nav: 'config', cap: 'document.brand.manage' });
 
 /* ---- 42b-v-config-layout.js ---- */
 /* =====================================================================
@@ -8587,7 +8587,7 @@ const stgDirtyBox = () => h`<div class="callout warn" id="stgDirty" hidden>${ico
 
 const stgTabList = () => [
   { id: 'umum', label: 'Umum' },
-  can('config.manage') ? { id: 'brand', label: 'Identitas & logo' } : null,
+  can('document.brand.manage') ? { id: 'brand', label: 'Identitas & logo' } : null,
   can('config.manage') ? { id: 'nomor', label: 'Penomoran surat' } : null,
   can('config.manage') ? { id: 'kategori', label: 'Kategori SOP' } : null,
   can('data.backup') || can('data.restore') ? { id: 'data', label: 'Data & backup' } : null
@@ -8628,7 +8628,7 @@ function stgGeneralHTML() {
     <section class="panel"><div class="panel-h"><h3>Tampilan</h3></div><div class="panel-b row">
       <div class="chips" role="group" aria-label="Tema"><button type="button" class="chip ${dark ? '' : 'on'}" data-act="set.theme" data-v="light">${ico('sun', 15)} Terang</button><button type="button" class="chip ${dark ? 'on' : ''}" data-act="set.theme" data-v="dark">${ico('moon', 15)} Gelap</button></div>
       <span class="muted small">Berlaku untuk perangkat ini saja.</span><span class="spacer"></span>${btn('Profil & kata sandi saya', 'profile.open', { icon: 'user' })}</div></section>
-    ${can('config.manage') ? h`<section class="panel"><div class="panel-h"><h3>Identitas visual perusahaan</h3></div><div class="panel-b stack"><p class="muted small">Nama perusahaan, logo login, dan favicon dikelola terpisah.</p>${btn('Kelola identitas dan logo', 'set.brand', { icon: 'image' })}</div></section>` : ''}
+    ${can('document.brand.manage') ? h`<section class="panel"><div class="panel-h"><h3>Identitas visual perusahaan</h3></div><div class="panel-b stack"><p class="muted small">Nama perusahaan, logo login, dan favicon dikelola terpisah.</p>${btn('Kelola identitas dan logo', 'set.brand', { icon: 'image' })}</div></section>` : ''}
     ${can('config.manage') ? stgPolicyForm() : stgPolicyReadOnly()}</div>`;
 }
 ACT['set.brand'] = () => App.go('/settings?tab=brand');
