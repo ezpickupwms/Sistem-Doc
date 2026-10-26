@@ -8172,7 +8172,7 @@ function cfPreview() {
   return CF.chain;
 }
 ACT['cf.prev'] = el => { CF.prev = cfIsAdmin() && el.dataset.v === 'sop' ? 'sop' : 'surat'; const b = byId('cfPrevBar'); if (b) b.innerHTML = toHtml(cfPrevBarHTML()); cfPreview(); };
-const cfPrevBarHTML = () => h`<div class="chips" role="group" aria-label="Jenis pratinjau">${[['surat', 'Surat'], ['sop', 'SOP']].map(([v, l]) => h`<button type="button" class="chip ${CF.prev === v ? 'on' : ''}" data-act="cf.prev" data-v="${v}">${l}</button>`)}</div><span class="muted small">Pratinjau memakai isian di kiri, bahkan yang belum disimpan.</span>`;
+const cfPrevBarHTML = () => h`<div class="chips" role="group" aria-label="Jenis pratinjau">${(cfIsAdmin() ? [['surat', 'Surat'], ['sop', 'SOP']] : [['surat', 'Surat & Memo']]).map(([v, l]) => h`<button type="button" class="chip ${CF.prev === v ? 'on' : ''}" data-act="cf.prev" data-v="${v}">${l}</button>`)}</div><span class="muted small">Pratinjau memakai isian di kiri, bahkan yang belum disimpan.</span>`;
 
 /* ---------- bentuk isian ---------- */
 const cfT = (name, label, o = {}) => F.text(name, label, getPath(CF.d, name), Object.assign({ input: 'cf.f' }, o));
@@ -8197,7 +8197,7 @@ function cfLetterBrandHTML() { const d=CF.d, imgHead=d.headerMode === 'image', i
         ${cfT('headerImageMaxMm', 'Tinggi maksimal gambar (mm)', { type: 'number', step: 1, min: 10, mode: 'numeric', help: '10–90 mm.' })}
         ${F.select('headerImageFit', 'Lebar kop gambar', [['content','Mengikuti margin isi surat'],['page','Full bleed A4 (0 mm kiri, kanan, atas)']], CF.d.headerImageFit || 'content', { change:'cf.f' })}`
         : h`<p class="small muted" style="margin:0">Mode teks: sistem menyusun logo, nama perusahaan, alamat, dan kontak secara otomatis. Perubahan identitas di atas langsung memengaruhi kop ini. Header tabel SOP diatur terpisah pada tab Tata letak SOP.</p>
-        <label class="fld"><span class="fld-l">Warna nama perusahaan</span><span class="row nowrap" style="gap:8px"><input class="input" type="color" name="accent" value="${/^#[0-9a-fA-F]{6}$/.test(d.accent || '') ? d.accent : '#cc0000'}" data-input="cf.f" style="width:64px;height:38px;padding:3px"><span class="mono small muted">${d.accent || ''}</span></span></label>`}
+        ${cfIsAdmin() ? h`<label class="fld"><span class="fld-l">Warna nama perusahaan</span><span class="row nowrap" style="gap:8px"><input class="input" type="color" name="accent" value="${/^#[0-9a-fA-F]{6}$/.test(d.accent || '') ? d.accent : '#cc0000'}" data-input="cf.f" style="width:64px;height:38px;padding:3px"><span class="mono small muted">${d.accent || ''}</span></span></label>` : ''}`}
     </div></section>
     <section class="panel"><div class="panel-h"><h3>2. Kaki halaman surat</h3><span class="spacer"></span><div class="chips" role="group" aria-label="Jenis kaki halaman"><button type="button" class="chip ${imgFoot ? '' : 'on'}" data-act="cf.mode" data-k="footerMode" data-v="text">Teks</button><button type="button" class="chip ${imgFoot ? 'on' : ''}" data-act="cf.mode" data-k="footerMode" data-v="image">Gambar</button></div></div><div class="panel-b stack">
       ${imgFoot ? h`${cfImgBlock('footerImage', 'Gambar kaki halaman', 'Gambar kaki selebar halaman. Otomatis diperkecil.')}${cfT('footerImageMaxMm', 'Tinggi maksimal gambar (mm)', { type: 'number', step: 1, min: 8, mode: 'numeric', help: '8–60 mm.' })}${F.select('footerImageFit', 'Lebar footer gambar', [['content','Mengikuti margin isi surat'],['page','Full bleed A4 (0 mm kiri, kanan, bawah)']], d.footerImageFit || 'content', { change:'cf.f' })}`
@@ -8237,7 +8237,7 @@ function cfSignersHTML() {
     <div class="row">${btn('Tambah penandatangan', 'cf.sg.add', { icon: 'plus' })}</div></div>`;
 }
 const cfIsAdmin = () => can('config.manage');
-const CF_LETTER_KEYS = ['headerMode','headerImage','headerImageMaxMm','headerImageFit','footerMode','footerImage','footerImageMaxMm','footerImageFit','footerText','showFooter','letterMargins','letterSize','letterFont','accent','watermark'];
+const CF_LETTER_KEYS = ['headerMode','headerImage','headerImageMaxMm','headerImageFit','footerMode','footerImage','footerImageMaxMm','footerImageFit','footerText','showFooter','letterMargins','letterSize','letterFont','watermark'];
 const CF_GROUPS = {
   sop: { title:'Format SOP', desc:'Atur sampul, kop/header SOP, nomor bagian, struktur isi dan catatan kaki.', tabs:[['lay','Halaman & header'],['str','Struktur & penomoran'],['sopfoot','Catatan kaki SOP']] },
   surat: { title:'Format Surat & Memo', desc:'Atur kop surat, kaki surat, huruf, margin dan tanda air.', tabs:[['letterkop','Kop & kaki surat'],['fmt','Huruf & margin']] },
@@ -8245,7 +8245,7 @@ const CF_GROUPS = {
 };
 const cfGroupOf = tab => Object.keys(CF_GROUPS).find(k => CF_GROUPS[k].tabs.some(t => t[0] === tab)) || 'umum';
 const cfTabsItems = () => (cfIsAdmin() ? CF_GROUPS[cfGroupOf(CF.tab)].tabs : [['letterkop','Kop & kaki surat'],['fmt','Huruf & margin'],['ttd','Penandatangan surat']]).map(([id,label]) => ({id,label, badge:id==='ttd'?CF.sg.length:id==='str'?(CF.d.sections.filter(x=>!SEC_DEFS[x.id]).length||''):''}));
-const cfGroupHTML = () => h`<div class="cf-group-nav" role="group" aria-label="Kelompok pengaturan">${Object.entries(CF_GROUPS).filter(([id]) => cfIsAdmin() || id === 'surat').map(([id,g])=>h`<button type="button" class="cf-group-btn ${cfGroupOf(CF.tab)===id?'on':''}" data-act="cf.group" data-id="${id}" aria-pressed="${cfGroupOf(CF.tab)===id}"><b>${g.title}</b><small>${g.desc}</small></button>`)}</div><div class="cf-group-intro"><b>${CF_GROUPS[cfGroupOf(CF.tab)].title}</b><span>${CF_GROUPS[cfGroupOf(CF.tab)].desc}</span></div>`;
+const cfGroupHTML = () => h`<div class="cf-group-nav" role="group" aria-label="Kelompok pengaturan">${Object.entries(CF_GROUPS).filter(([id]) => cfIsAdmin() || id === 'surat').map(([id,g])=>h`<button type="button" class="cf-group-btn ${cfGroupOf(CF.tab)===id?'on':''}" data-act="cf.group" data-id="${id}" aria-pressed="${cfGroupOf(CF.tab)===id}"><b>${g.title}</b><small>${g.desc}</small></button>`)}</div><div class="cf-group-intro"><b>${!cfIsAdmin() && CF.tab === 'ttd' ? 'Penandatangan Surat & Memo' : CF_GROUPS[cfGroupOf(CF.tab)].title}</b><span>${!cfIsAdmin() && CF.tab === 'ttd' ? 'Daftar tanda tangan yang hanya berlaku untuk surat dan memo.' : CF_GROUPS[cfGroupOf(CF.tab)].desc}</span></div>`;
 const cfBodyHTML = () => CF.tab === 'ttd' ? cfSignersHTML() : CF.tab === 'fmt' ? cfFormatHTML() : CF.tab === 'letterkop' ? cfLetterBrandHTML() : CF.tab === 'sopfoot' ? cfSopFooterHTML() : CF.tab === 'lay' ? cfLyHTML() : CF.tab === 'str' ? cfStHTML() : cfIdentityHTML();
 function cfRefreshForm() {
   const t=byId('cfTabs'), b=byId('cfBody'), g=byId('cfGroups'); if(!t||!b)return;
@@ -8339,7 +8339,7 @@ function cfSave() {
   if (err) { if (err[2] && err[2] !== CF.tab) { CF.tab = err[2]; cfRefreshForm(); } toast(err[1], 'danger', 6500); return false; }
   const fullCfg = cfClean(CF.d), editedSigners = cfCleanSigners(CF.sg);
   const cfg = cfIsAdmin() ? fullCfg : Object.assign(clone(DB.docConfig), Object.fromEntries(CF_LETTER_KEYS.map(k => [k, fullCfg[k]])));
-  const sg = cfIsAdmin() ? editedSigners : DB.signers.filter(s => s.showInSOP).concat(editedSigners.map(s => Object.assign({}, s, { showInSOP: false })));
+  const sg = cfIsAdmin() ? editedSigners : DB.signers.map(s => s.showInSOP ? s : (editedSigners.find(e => e.id === s.id) || s)).concat(editedSigners.filter(s => !DB.signers.some(old => old.id === s.id)).map(s => Object.assign({}, s, { showInSOP: false })));
   const snap = { c: DB.docConfig, s: DB.signers }, sum0 = cfChangeSummary(snap.c, cfg, snap.s, sg);
   DB.docConfig = cfg; DB.signers = sg;
   if (!dbSave('docConfig', 'signers')) {
