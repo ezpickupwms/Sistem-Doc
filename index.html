@@ -3074,7 +3074,7 @@ function navCounts() {
 function renderSide() {
   const favicon = document.querySelector('link[rel="icon"]');
   if (favicon && !favicon.dataset.defaultIcon) favicon.dataset.defaultIcon = favicon.href;
-  if (favicon) favicon.href = (DB.docConfig && (DB.docConfig.appIcon || DB.docConfig.logo)) || favicon.dataset.defaultIcon || favicon.href;
+  if (favicon) favicon.href = (DB.docConfig && DB.docConfig.appIcon) || favicon.dataset.defaultIcon || favicon.href;
   const cnt = navCounts();
   byId('side').innerHTML = toHtml(h`
     <a class="brand" href="#/dashboard" aria-label="Ke ringkasan">
@@ -8627,8 +8627,10 @@ function stgGeneralHTML() {
     <section class="panel"><div class="panel-h"><h3>Tampilan</h3></div><div class="panel-b row">
       <div class="chips" role="group" aria-label="Tema"><button type="button" class="chip ${dark ? '' : 'on'}" data-act="set.theme" data-v="light">${ico('sun', 15)} Terang</button><button type="button" class="chip ${dark ? 'on' : ''}" data-act="set.theme" data-v="dark">${ico('moon', 15)} Gelap</button></div>
       <span class="muted small">Berlaku untuk perangkat ini saja.</span><span class="spacer"></span>${btn('Profil & kata sandi saya', 'profile.open', { icon: 'user' })}</div></section>
+    ${can('config.manage') ? h`<section class="panel"><div class="panel-h"><h3>Identitas visual perusahaan</h3></div><div class="panel-b stack"><p class="muted small">Nama perusahaan, logo login, dan favicon dikelola terpisah.</p>${btn('Kelola identitas dan logo', 'set.brand', { icon: 'image' })}</div></section>` : ''}
     ${can('config.manage') ? stgPolicyForm() : stgPolicyReadOnly()}</div>`;
 }
+ACT['set.brand'] = () => App.go('/config');
 ACT['set.theme'] = el => { DB.settings.theme = el.dataset.v === 'dark' ? 'dark' : 'light'; dbSave('settings'); applyTheme(); renderTop(); App.rerender(); };
 CHG['set.pol'] = el => { const s = byId('stgSelf'); if (s) s.disabled = !el.checked; };
 SUB['set.general'] = f => {
