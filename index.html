@@ -6305,8 +6305,8 @@ ACT['bk.xlsx'] = async () => {
   await exportTable({ title: 'Daftar surat massal', sheet: 'Surat massal', file: `daftar-surat-massal-${todayISO()}.xlsx`, types: '-d---', head: ['Nomor', 'Tanggal', 'Jenis', 'Perihal', 'Kepada'], rows: recs.map(l => [l.no, l.date, l.typeName, l.subject, l.to]) });
 };
 CHG['bk.preview'] = el => { BK.previewIndex=Math.max(0,Number(el.value)||0); bkPreviewRefresh(); };
-async let bkPreviewToken=0;
-async async function bkPreviewRefresh() {
+let bkPreviewToken=0;
+async function bkPreviewRefresh() {
   const token=++bkPreviewToken, el=byId('bkPreview'), p=bkPlan(); if (!el) return;
   if (!p.letters || !p.letters.length) { el.textContent='Masukkan data yang valid untuk melihat preview.'; return; }
   const row=p.letters[Math.min(BK.previewIndex,p.letters.length-1)];
