@@ -1034,7 +1034,7 @@ const DEFAULT_DOC_CONFIG = {
   companyName: 'PT. EZDIGITAL LOGISTIK SANTARA', shortName: 'EZPickup', city: 'Kuningan',
   address: 'Jl. Siliwangi No. 265, Cijoho, Kec. Kuningan, Kab. Kuningan, Jawa Barat, 45513',
   phone: '085792551200', email: 'ezdigitalsantara@gmail.com / bd@ezpickup.id', website: 'ezpickup.id',
-  logo: '', showLogoInHeader: true,
+  logo: '', appIcon: '', showLogoInHeader: true,
   headerMode: 'text', headerImage: '', headerImageMaxMm: 45, headerImageFit: 'content',
   footerMode: 'text', footerImage: '', footerImageMaxMm: 30, footerImageFit: 'content',
   footerText: 'Dokumen ini diterbitkan secara elektronik dan sah tanpa tanda tangan basah.', showFooter: true,
@@ -2531,7 +2531,7 @@ const CAPS = {
   'sop.delete': 'admin', 'sop.export': 'admin supervisor staff viewer',
   'letter.create': 'admin supervisor staff', 'letter.void': 'admin supervisor', 'letter.template': 'admin',
   'form.manage': 'admin supervisor', 'kpi.input': 'admin supervisor staff', 'kpi.manage': 'admin supervisor',
-  'audit.manage': 'admin supervisor', 'config.manage': 'admin', 'user.manage': 'admin',
+  'audit.manage': 'admin supervisor', 'config.manage': 'admin', 'document.brand.manage': 'admin supervisor', 'user.manage': 'admin',
   'data.backup': 'admin supervisor', 'data.restore': 'admin', 'activity.view': 'admin supervisor'
 };
 const ROLE_CAP_LOCKED = new Set(['user.manage','config.manage','data.restore']);
@@ -2985,7 +2985,7 @@ const NAV = [
     ['kpi', 'KPI & sasaran mutu', 'bars', '/kpi'],
     ['audit', 'Audit & tindakan korektif', 'checksq', '/audit']] },
   { g: 'Sistem', items: [
-    ['config', 'Kop & tata letak', 'layout', '/config', 'config.manage'],
+    ['config', 'Kop & tata letak', 'layout', '/config', 'document.brand.manage'],
     ['users', 'Pengguna', 'users', '/users', 'user.manage'],
     ['activity', 'Log aktivitas', 'history', '/activity', 'activity.view'],
     ['settings', 'Pengaturan & data', 'settings', '/settings'],
@@ -3072,6 +3072,9 @@ function navCounts() {
 
 /* ---------- Sidebar & topbar ---------- */
 function renderSide() {
+  const favicon = document.querySelector('link[rel="icon"]');
+  if (favicon && !favicon.dataset.defaultIcon) favicon.dataset.defaultIcon = favicon.href;
+  if (favicon) favicon.href = (DB.docConfig && DB.docConfig.appIcon) || favicon.dataset.defaultIcon || favicon.href;
   const cnt = navCounts();
   byId('side').innerHTML = toHtml(h`
     <a class="brand" href="#/dashboard" aria-label="Ke ringkasan">
@@ -3933,8 +3936,8 @@ function letterSpec(L) {
   B.push({ t: 'spacer', h: 2 });
   const sg = arr(L.signers).filter(x => x && (x.name || x.position));
   if (layout === 'surat' && sg.length) { B.push({ t: 'p', text: `Hormat kami,${cfg.companyName ? '\n**' + noStar(cfg.companyName) + '**' : ''}`, keepNext: true, align: 'left' }); }
-  if (sg.length) B.push({ t: 'sig', style: 'letter', align: L.sigAlign || 'center', signers: sg.map(x => ({ role: '', name: x.name, position: x.position, img: x.img })), keepPrev: true });
-  if (L.cc && layout !== 'memo') B.push({ t: 'p', text: `Tembusan:\n${L.cc}`, size: 9.5 });
+  if (sg.length) B.push({ t: 'sig', style: 'letter', align: L.sigAlign || 'center', signers: sg.map(x => ({ role: x.role || 'Penandatangan', name: x.name, position: x.position, img: x.img })), keepPrev: true });
+  if (L.cc && layout !== 'memo') B.push({ t: 'p', text: 'Tembusan:\n' + linesOf(L.cc).map((s,i) => (i+1)+'. '+s).join('\n'), size: 9.5 });
   const ftxt = cfg.showFooter !== false && cfg.footerText ? { k: 'text', text: cfg.footerText } : null;
   const ft = cfg.footerMode === 'image' && cfg.footerImage ? { k: 'image', src: cfg.footerImage, maxMm: cfg.footerImageMaxMm || 30, bleed: cfg.footerImageFit === 'page' } : ftxt;
   return {
@@ -5904,8 +5907,8 @@ function letterVars(t, S, no) {
 }
 const ltBody = (t, S, no) => fillTemplate(t.body, letterVars(t, S, no)).replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim();
 function ltSigners(S) {
-  const out = DB.signers.slice().sort((a, b) => a.order - b.order).filter(s => arr(S.signerIds).includes(s.id)).map(s => ({ sid: s.id, name: s.name, position: s.position }));
-  linesOf(S.extra).forEach(l => { const parts = l.split('|'), n = parts.shift().trim(); if (n) out.push({ sid: '', name: n, position: parts.join('|').trim() }); });
+  const out = DB.signers.slice().sort((a, b) => a.order - b.order).filter(s => arr(S.signerIds).includes(s.id)).map(s => ({ sid: s.id, role: s.role || 'Penandatangan', name: s.name, position: s.position }));
+  linesOf(S.extra).forEach(l => { const parts = l.split('|'), n = parts.shift().trim(); if (n) out.push({ sid: '', name: n, position: parts.join('|').trim(), role: 'Penandatangan' }); });
   return out;
 }
 function composeLetter(S, o) {
@@ -6066,8 +6069,8 @@ function ltItemsPanel(S, t) {
 function ltFormHTML(S, t) {
   const lay = t.layout || 'surat', pk = S.useManual ? { no: S.manualNo.trim() || '—' } : peekNumber(t.id, S.date);
   const recip = lay === 'ba' ? '' : lay === 'memo'
-    ? h`<div class="form-grid">${F.text('to', 'Kepada', S.to, { req: true, input: 'lt.f', ph: 'mis. Seluruh SPV Gudang' })}${F.text('from', 'Dari', S.from, { input: 'lt.f', ph: 'mis. Manager Operasional' })}${F.text('cc', 'Tembusan', S.cc, { input: 'lt.f', ph: 'opsional', cls: 'full' })}</div>`
-    : h`<div class="form-grid">${F.text('to', 'Kepada Yth.', S.to, { req: true, input: 'lt.f', ph: 'mis. PT Contoh Klien — Bpk. Andi' })}${F.text('lampiran', 'Lampiran', S.lampiran, { input: 'lt.f', ph: 'mis. 1 berkas' })}${F.area('toAddr', 'Alamat tujuan', S.toAddr, { rows: 2, input: 'lt.f', cls: 'full', ph: 'opsional' })}${F.text('cc', 'Tembusan', S.cc, { input: 'lt.f', ph: 'opsional', cls: 'full' })}</div>`;
+    ? h`<div class="form-grid">${F.text('to', 'Kepada', S.to, { req: true, input: 'lt.f', ph: 'mis. Seluruh SPV Gudang' })}${F.text('from', 'Dari', S.from, { input: 'lt.f', ph: 'mis. Manager Operasional' })}${F.area('cc', 'Tembusan (satu penerima per baris)', S.cc, { input: 'lt.f', ph: 'Direktur Operasional\nArsip', rows: 3, cls: 'full' })}</div>`
+    : h`<div class="form-grid">${F.text('to', 'Kepada Yth.', S.to, { req: true, input: 'lt.f', ph: 'mis. PT Contoh Klien — Bpk. Andi' })}${F.text('lampiran', 'Lampiran', S.lampiran, { input: 'lt.f', ph: 'mis. 1 berkas' })}${F.area('toAddr', 'Alamat tujuan', S.toAddr, { rows: 2, input: 'lt.f', cls: 'full', ph: 'opsional' })}${F.area('cc', 'Tembusan (satu penerima per baris)', S.cc, { input: 'lt.f', ph: 'Direktur\nArsip', rows: 3, cls: 'full' })}</div>`;
   const dyn = arr(t.fields).map(f => {
     const name = 'fields.' + f.k, val = S.fields[f.k] == null ? '' : S.fields[f.k], o = { req: f.req, ph: f.ph, input: 'lt.f' };
     if (f.t === 'textarea') return F.area(name, f.l, val, Object.assign(o, { rows: f.rows || 4, cls: 'full' }));
@@ -6119,7 +6122,7 @@ route(/^\/letters$/, (m, q) => {
    35b-v-bulk.js — surat massal dari tabel (Excel .xlsx / CSV / tempel): nomor berurutan,
    cetak gabungan, unduh ZIP berisi berkas Word per surat
    ===================================================================== */
-const BK = { typeId: '', date: '', text: '', signerIds: null, extra: '', result: null };
+const BK = { typeId: '', date: '', text: '', signerIds: null, extra: '', sigAlign: 'center', cc: '', previewIndex: 0, result: null };
 const bkNorm = s => String(s == null ? '' : s).toLowerCase().replace(/[^a-z0-9]+/g, '');
 const BK_ALIAS = {
   to: ['kepada', 'kepadayth', 'tujuan', 'to', 'penerima', 'namapenerima'], toAddr: ['alamat', 'alamattujuan', 'alamatpenerima', 'toaddr'],
@@ -6188,7 +6191,7 @@ function bkPlan() {
   });
   const letters = groups.map(g => {
     const S = ltBlank(t.id, { date: B.date, signerIds: B.signerIds, extra: B.extra, fields: g.fields });
-    S.to = g.to; S.toAddr = g.meta.toAddr || ''; S.from = g.meta.from || ''; S.cc = g.meta.cc || ''; S.lampiran = g.meta.lampiran || '';
+    S.to = g.to; S.toAddr = g.meta.toAddr || ''; S.from = g.meta.from || ''; S.cc = g.meta.cc || B.cc || ''; S.sigAlign = B.sigAlign || 'center'; S.lampiran = g.meta.lampiran || '';
     if (g.meta.subject) S.subject = g.meta.subject; if (g.meta.date && validISO(g.meta.date)) S.date = g.meta.date;
     Object.keys(g.fields).forEach(k => { S.fields[k] = g.fields[k]; });
     if (hasItems) S.items = g.items.length ? g.items : [Array(t.items.length).fill('')];
@@ -6212,12 +6215,15 @@ function bkPlanHTML() {
     ${p.letters.length > 60 ? h`<div class="small muted">Menampilkan 60 dari ${p.letters.length} surat.</div>` : ''}
   </div>`;
 }
-function bkRefreshPlan() { const el = byId('bkPlan'); if (el) el.innerHTML = toHtml(bkPlanHTML()); const b = byId('bkGo'); if (b) { const p = bkPlan(); b.disabled = !(p.letters && p.letters.length && !p.errors); } }
+let bkPreviewTimer = null;
+function bkRefreshPlan() { const el = byId('bkPlan'); if (el) el.innerHTML = toHtml(bkPlanHTML()); const b = byId('bkGo'); if (b) { const p = bkPlan(); b.disabled = !(p.letters && p.letters.length && !p.errors); } clearTimeout(bkPreviewTimer); bkPreviewTimer = setTimeout(bkPreviewRefresh, 450); }
 INP['bk.text'] = el => { bkState().text = el.value; BK.result = null; bkRefreshPlan(); };
 CHG['bk.type'] = el => { bkState().typeId = el.value; BK.result = null; App.rerender(); };
+CHG['bk.align'] = el => { BK.sigAlign=el.value; bkRefreshPlan(); };
+INP['bk.cc'] = el => { BK.cc=el.value; bkRefreshPlan(); };
 CHG['bk.date'] = el => { bkState().date = el.value; bkRefreshPlan(); };
 INP['bk.extra'] = el => { bkState().extra = el.value; bkRefreshPlan(); };
-CHG['bk.sig'] = el => { const B = bkState(), set = new Set(B.signerIds); if (el.checked) set.add(el.dataset.id); else set.delete(el.dataset.id); B.signerIds = Array.from(set); };
+CHG['bk.sig'] = el => { const B = bkState(), set = new Set(B.signerIds); if (el.checked) set.add(el.dataset.id); else set.delete(el.dataset.id); B.signerIds = Array.from(set); bkRefreshPlan(); };
 ACT['bk.file'] = async () => {
   const f = await pickFile(TABLE_ACCEPT); if (!f) return;
   if (f.size > 5 * 1024 * 1024) return toast('Berkas terlalu besar (maks. 5 MB).', 'danger');
@@ -6298,11 +6304,25 @@ ACT['bk.xlsx'] = async () => {
   const recs = bkRecs(); if (!recs.length) return;
   await exportTable({ title: 'Daftar surat massal', sheet: 'Surat massal', file: `daftar-surat-massal-${todayISO()}.xlsx`, types: '-d---', head: ['Nomor', 'Tanggal', 'Jenis', 'Perihal', 'Kepada'], rows: recs.map(l => [l.no, l.date, l.typeName, l.subject, l.to]) });
 };
+CHG['bk.preview'] = el => { BK.previewIndex=Math.max(0,Number(el.value)||0); bkPreviewRefresh(); };
+let bkPreviewToken=0;
+async function bkPreviewRefresh() {
+  const token=++bkPreviewToken, el=byId('bkPreview'), p=bkPlan(); if (!el) return;
+  if (!p.letters || !p.letters.length) { el.textContent='Masukkan data yang valid untuk melihat preview.'; return; }
+  const row=p.letters[Math.min(BK.previewIndex,p.letters.length-1)];
+  try {
+    const L=composeLetter(row.S,{no:row.num.no}); L.watermark='CONTOH';
+    const result=await buildResult(letterSpec(ltRender(L)));
+    if (token!==bkPreviewToken || byId('bkPreview')!==el) return;
+    el.innerHTML=toHtml(h`${docToolbar(result,'')}${docStageHTML(result)}`);
+    mountDoc(result);
+  } catch(e) { if (token===bkPreviewToken && byId('bkPreview')===el) el.textContent='Preview gagal: '+(e.message || String(e)); }
+}
 function ltBulkView() {
   const B = bkState(), t = letterType(B.typeId), sg = DB.signers.slice().sort((a, b) => a.order - b.order), p0 = bkPlan();
   const cols = bkColumns(t), res = bkRecs();
   return {
-    title: 'Surat massal',
+    title: 'Surat massal', post: () => bkPreviewRefresh(),
     html: h`${pageHead('Buat surat & memo', 'Satu tabel Excel/CSV menjadi banyak surat bernomor berurutan.', '')}
     ${tabsHTML(ltTabs(), 'massal', 'lt.tab')}
     ${res.length ? h`<div class="callout ok">${ico('check', 18)}<div><b>${res.length} surat berhasil diterbitkan</b> (${res[0].no}${res.length > 1 ? ' s/d ' + res[res.length - 1].no : ''}).<div class="small">Cetak gabungan atau unduh ZIP berisi satu berkas Word per surat. Semua surat juga ada di register.</div>
@@ -6311,14 +6331,14 @@ function ltBulkView() {
       <section class="panel"><div class="panel-h"><h3>1 · Jenis dokumen & penandatangan</h3></div><div class="panel-b stack">
         <div class="form-grid">${F.select('typeId', 'Jenis dokumen', DB.letterTypes.map(x => [x.id, x.name]), t.id, { change: 'bk.type' })}${F.date('date', 'Tanggal dokumen', B.date, { change: 'bk.date', help: 'Kolom "Tanggal" pada tabel (bila ada) menggantikan tanggal ini.' })}</div>
         <div class="stack-sm"><span class="fld-l">Penandatangan</span>${sg.map(s => h`<label class="chk"><input type="checkbox" data-change="bk.sig" data-id="${s.id}"${raw(arr(B.signerIds).includes(s.id) ? ' checked' : '')}><span><b>${s.name}</b> <small class="fld-h" style="display:inline">${s.position}</small></span></label>`)}</div>
-        ${F.area('extra', 'Penandatangan tambahan (opsional)', B.extra, { rows: 2, input: 'bk.extra', ph: 'Nama | Jabatan — satu per baris' })}
+        ${F.area('extra', 'Penandatangan tambahan (opsional)', B.extra, { rows: 2, input: 'bk.extra', ph: 'Nama | Jabatan — satu per baris' })}${F.select('sigAlign','Posisi tanda tangan',[['left','Kiri'],['center','Tengah'],['right','Kanan']],B.sigAlign || 'center',{change:'bk.align'})}${F.area('cc','Tembusan bawaan (satu per baris)',B.cc || '',{rows:3,input:'bk.cc',ph:'Direktur\nArsip'})}
       </div></section>
       <section class="panel"><div class="panel-h"><h3>2 · Data tabel</h3><span class="spacer"></span>${btn('Contoh tabel', 'bk.sample', { icon: 'download', cls: 'sm' })}${btn('Pilih berkas Excel / CSV', 'bk.file', { icon: 'upload', cls: 'sm' })}${B.text ? btn('Kosongkan', 'bk.clear', { icon: 'x', cls: 'sm ghost' }) : ''}</div><div class="panel-b stack-sm">
         <textarea class="textarea mono" rows="9" name="bktext" aria-label="Data tabel" placeholder="Salin dari Excel (termasuk baris judul) lalu tempel di sini…" data-input="bk.text" data-keep="bk.text" spellcheck="false" style="font-size:12.5px">${B.text}</textarea>
         <p class="small muted" style="margin:0">Baris pertama = judul kolom. Pilih berkas Excel (.xlsx) atau CSV, atau tempel hasil salin dari Excel. Pemisah tab, titik koma, atau koma dikenali otomatis. Maksimal 500 baris.</p></div></section>
       <section class="panel"><div class="panel-h"><h3>3 · Periksa & terbitkan</h3><span class="spacer"></span><button type="button" class="btn primary" id="bkGo" data-act="bk.issue"${raw(p0.letters && p0.letters.length && !p0.errors ? '' : ' disabled')}>${ico('send', 16)}<span>Terbitkan</span></button></div><div class="panel-b" id="bkPlan">${bkPlanHTML()}</div></section>
     </div>
-    <aside class="stack sticky-col"><section class="panel"><div class="panel-h"><h3>Kolom untuk "${t.name}"</h3></div><div class="panel-b stack-sm"><p class="small muted" style="margin:0">Judul kolom boleh huruf besar/kecil. Kolom yang tidak dikenali diabaikan.</p>
+    <aside class="stack sticky-col"><section class="panel"><div class="panel-h"><h3>Preview sebelum terbit</h3></div><div class="panel-b stack-sm"><p class="small muted">Pilih salah satu surat dari rencana untuk memeriksa posisi tanda tangan, tembusan, dan halaman A4.</p>${p0.letters && p0.letters.length ? h`${F.select('previewIndex','Surat',p0.letters.slice(0,500).map((l,i)=>[String(i),String(i+1)+' · '+(l.S.to || l.S.subject)]),String(Math.min(B.previewIndex,p0.letters.length-1)),{change:'bk.preview'})}<div id="bkPreview" class="doc-wait">Menyusun preview…</div>` : h`<p class="small muted">Masukkan data terlebih dahulu.</p>`}</div></section><section class="panel"><div class="panel-h"><h3>Kolom untuk "${t.name}"</h3></div><div class="panel-b stack-sm"><p class="small muted" style="margin:0">Judul kolom boleh huruf besar/kecil. Kolom yang tidak dikenali diabaikan.</p>
       <ul class="lint">${cols.map(([c, d]) => h`<li><span class="ic">${ico('check', 14)}</span><span><b>${c}</b><br><span class="muted">${d}</span></span></li>`)}</ul>
       ${arr(t.items).length ? h`<div class="callout" style="margin:0">${ico('info', 18)}<div class="small">Template ini memakai tabel rincian: baris dengan <b>penerima yang sama</b> digabung menjadi satu surat, satu baris tabel per barisnya.</div></div>` : ''}</div></section></aside></div>`
   };
@@ -7820,7 +7840,7 @@ const CAP_LABEL = {
   'sop.view': 'Melihat SOP', 'sop.export': 'Cetak & unduh dokumen', 'sop.propose': 'Mengusulkan revisi SOP', 'sop.create': 'Membuat SOP baru', 'sop.approve': 'Menyetujui revisi SOP', 'sop.delete': 'Menghapus SOP',
   'letter.create': 'Membuat surat & memo', 'letter.void': 'Membatalkan surat terbit', 'letter.template': 'Mengubah template surat', 'form.manage': 'Mengelola pustaka formulir',
   'kpi.input': 'Mengisi data KPI', 'kpi.manage': 'Mengelola definisi KPI', 'audit.manage': 'Mengelola audit & tindakan korektif',
-  'config.manage': 'Mengatur kop, penandatangan & kebijakan', 'user.manage': 'Mengelola pengguna', 'data.backup': 'Mengunduh backup', 'data.restore': 'Memulihkan data', 'activity.view': 'Melihat log aktivitas'
+  'document.brand.manage': 'Mengatur format Surat & Memo (Supervisor)', 'config.manage': 'Mengatur kebijakan sistem (Superadmin)', 'user.manage': 'Mengelola pengguna', 'data.backup': 'Mengunduh backup', 'data.restore': 'Memulihkan data', 'activity.view': 'Melihat log aktivitas'
 };
 const usrIsDefaultPw = u => !!u.mustChange && !u.pwChanged;
 const usrRoleKind = r => ({ admin: 'danger', supervisor: 'info', staff: 'ok', viewer: 'mute' }[r] || 'mute');
@@ -8023,13 +8043,13 @@ ACT['usr.del'] = async el => {
 const CF = { d: null, sg: null, dirty: false, tab: 'kop', prev: 'surat', token: 0, chain: Promise.resolve(), timer: null, padDrawing: false };
 const cfDirty = () => CF.dirty;
 const CF_FONTS = ['Arial', 'Calibri', 'Cambria', 'Georgia', 'Tahoma', 'Times New Roman', 'Verdana'];
-const CF_IMG = { logo: { w: 480, h: 480, budget: 140000, label: 'logo' }, headerImage: { w: 1600, h: 400, budget: 520000, label: 'gambar kop' }, footerImage: { w: 1600, h: 300, budget: 420000, label: 'gambar kaki halaman' }, sig: { w: 560, h: 240, budget: 160000, label: 'tanda tangan' } };
+const CF_IMG = { appIcon: { w: 256, h: 256, budget: 100000, label: 'favicon' }, logo: { w: 480, h: 480, budget: 140000, label: 'logo' }, headerImage: { w: 1600, h: 400, budget: 520000, label: 'gambar kop' }, footerImage: { w: 1600, h: 300, budget: 420000, label: 'gambar kaki halaman' }, sig: { w: 560, h: 240, budget: 160000, label: 'tanda tangan' } };
 const cfNum = (v, def, lo, hi) => { const s = String(v == null ? '' : v).trim().replace(',', '.'), n = Number(s); return s !== '' && isFinite(n) ? clamp(n, lo, hi) : def; };
 
 function cfLoad() {
   CF.d = clone(DB.docConfig); CF.d.letterMargins = Object.assign({ t: 15, r: 22, b: 15, l: 22 }, CF.d.letterMargins);
   CF.d.layout = normLayout(CF.d.layout); CF.d.sections = normSections(CF.d.sections, CF.d.layout.preset === 'classic' ? 'classic' : 'ezdigital');
-  CF.sg = clone(DB.signers).sort((a, b) => (a.order || 0) - (b.order || 0)); CF.dirty = false;
+  CF.sg = clone(DB.signers).filter(s => cfIsAdmin() || !s.showInSOP).sort((a, b) => (a.order || 0) - (b.order || 0)); CF.dirty = false;
 }
 /* salinan bersih (angka valid) untuk pratinjau dan penyimpanan */
 function cfClean(d) {
@@ -8151,8 +8171,8 @@ function cfPreview() {
   });
   return CF.chain;
 }
-ACT['cf.prev'] = el => { CF.prev = el.dataset.v === 'sop' ? 'sop' : 'surat'; const b = byId('cfPrevBar'); if (b) b.innerHTML = toHtml(cfPrevBarHTML()); cfPreview(); };
-const cfPrevBarHTML = () => h`<div class="chips" role="group" aria-label="Jenis pratinjau">${[['surat', 'Surat'], ['sop', 'SOP']].map(([v, l]) => h`<button type="button" class="chip ${CF.prev === v ? 'on' : ''}" data-act="cf.prev" data-v="${v}">${l}</button>`)}</div><span class="muted small">Pratinjau memakai isian di kiri, bahkan yang belum disimpan.</span>`;
+ACT['cf.prev'] = el => { CF.prev = cfIsAdmin() && el.dataset.v === 'sop' ? 'sop' : 'surat'; const b = byId('cfPrevBar'); if (b) b.innerHTML = toHtml(cfPrevBarHTML()); cfPreview(); };
+const cfPrevBarHTML = () => h`<div class="chips" role="group" aria-label="Jenis pratinjau">${(cfIsAdmin() ? [['surat', 'Surat'], ['sop', 'SOP']] : [['surat', 'Surat & Memo']]).map(([v, l]) => h`<button type="button" class="chip ${CF.prev === v ? 'on' : ''}" data-act="cf.prev" data-v="${v}">${l}</button>`)}</div><span class="muted small">Pratinjau memakai isian di kiri, bahkan yang belum disimpan.</span>`;
 
 /* ---------- bentuk isian ---------- */
 const cfT = (name, label, o = {}) => F.text(name, label, getPath(CF.d, name), Object.assign({ input: 'cf.f' }, o));
@@ -8170,14 +8190,14 @@ function cfIdentityHTML() { const d = CF.d; return h`<div class="stack">    <sec
       ${cfT('phone', 'Telepon', { max: 40 })}${cfT('email', 'Email', { max: 120 })}${cfT('website', 'Situs web', { cls: 'full', max: 80 })}
     </div></div></section>
     <section class="panel"><div class="panel-h"><h3>Logo perusahaan</h3></div><div class="panel-b stack">${cfImgBlock('logo', 'Logo', 'PNG/JPG/SVG; latar transparan paling rapi. Otomatis diperkecil.')}
-      ${F.check('showLogoInHeader', 'Tampilkan logo di kop surat dan header SOP', d.showLogoInHeader !== false, { change: 'cf.f' })}</div></section>
+      ${F.check('showLogoInHeader', 'Tampilkan logo di kop surat dan header SOP', d.showLogoInHeader !== false, { change: 'cf.f' })}</div></section><section class="panel"><div class="panel-h"><h3>Favicon aplikasi (terpisah)</h3></div><div class="panel-b stack">${cfImgBlock('appIcon','Favicon aplikasi','Unggah ikon persegi PNG/JPG/WEBP. Bila kosong, ikon aplikasi bawaan digunakan; logo perusahaan tidak ikut berubah.')}</div></section>
 </div>`; }
 function cfLetterBrandHTML() { const d=CF.d, imgHead=d.headerMode === 'image', imgFoot=d.footerMode === 'image'; return h`<div class="stack">    <section class="panel"><div class="panel-h"><h3>1. Kop surat keluar &amp; memo</h3><span class="spacer"></span><div class="chips" role="group" aria-label="Jenis kop"><button type="button" class="chip ${imgHead ? '' : 'on'}" data-act="cf.mode" data-k="headerMode" data-v="text">Kop teks</button><button type="button" class="chip ${imgHead ? 'on' : ''}" data-act="cf.mode" data-k="headerMode" data-v="image">Kop gambar</button></div></div><div class="panel-b stack">
       ${imgHead ? h`${cfImgBlock('headerImage', 'Gambar kop', 'Unggah kop lengkap termasuk logo dan informasi perusahaan. Gambar diperkecil proporsional; logo teks otomatis tidak ditambahkan lagi agar tidak ganda.')}
         ${cfT('headerImageMaxMm', 'Tinggi maksimal gambar (mm)', { type: 'number', step: 1, min: 10, mode: 'numeric', help: '10–90 mm.' })}
         ${F.select('headerImageFit', 'Lebar kop gambar', [['content','Mengikuti margin isi surat'],['page','Full bleed A4 (0 mm kiri, kanan, atas)']], CF.d.headerImageFit || 'content', { change:'cf.f' })}`
         : h`<p class="small muted" style="margin:0">Mode teks: sistem menyusun logo, nama perusahaan, alamat, dan kontak secara otomatis. Perubahan identitas di atas langsung memengaruhi kop ini. Header tabel SOP diatur terpisah pada tab Tata letak SOP.</p>
-        <label class="fld"><span class="fld-l">Warna nama perusahaan</span><span class="row nowrap" style="gap:8px"><input class="input" type="color" name="accent" value="${/^#[0-9a-fA-F]{6}$/.test(d.accent || '') ? d.accent : '#cc0000'}" data-input="cf.f" style="width:64px;height:38px;padding:3px"><span class="mono small muted">${d.accent || ''}</span></span></label>`}
+        ${cfIsAdmin() ? h`<label class="fld"><span class="fld-l">Warna nama perusahaan</span><span class="row nowrap" style="gap:8px"><input class="input" type="color" name="accent" value="${/^#[0-9a-fA-F]{6}$/.test(d.accent || '') ? d.accent : '#cc0000'}" data-input="cf.f" style="width:64px;height:38px;padding:3px"><span class="mono small muted">${d.accent || ''}</span></span></label>` : ''}`}
     </div></section>
     <section class="panel"><div class="panel-h"><h3>2. Kaki halaman surat</h3><span class="spacer"></span><div class="chips" role="group" aria-label="Jenis kaki halaman"><button type="button" class="chip ${imgFoot ? '' : 'on'}" data-act="cf.mode" data-k="footerMode" data-v="text">Teks</button><button type="button" class="chip ${imgFoot ? 'on' : ''}" data-act="cf.mode" data-k="footerMode" data-v="image">Gambar</button></div></div><div class="panel-b stack">
       ${imgFoot ? h`${cfImgBlock('footerImage', 'Gambar kaki halaman', 'Gambar kaki selebar halaman. Otomatis diperkecil.')}${cfT('footerImageMaxMm', 'Tinggi maksimal gambar (mm)', { type: 'number', step: 1, min: 8, mode: 'numeric', help: '8–60 mm.' })}${F.select('footerImageFit', 'Lebar footer gambar', [['content','Mengikuti margin isi surat'],['page','Full bleed A4 (0 mm kiri, kanan, bawah)']], d.footerImageFit || 'content', { change:'cf.f' })}`
@@ -8208,7 +8228,7 @@ function cfSignersHTML() {
         <label class="fld"><span class="fld-l">Nama<i class="req" aria-hidden="true">*</i></span><input class="input" value="${s.name}" maxlength="80" data-input="cf.sg" data-i="${i}" data-f="name" autocomplete="off"></label>
         <label class="fld"><span class="fld-l">Jabatan</span><input class="input" value="${s.position}" maxlength="80" data-input="cf.sg" data-i="${i}" data-f="position" autocomplete="off"></label>
         <label class="fld full"><span class="fld-l">Peran dalam dokumen</span><input class="input" list="cfRoles" value="${s.role}" maxlength="60" data-input="cf.sg" data-i="${i}" data-f="role" autocomplete="off"><small class="fld-h">Pilih dari daftar atau ketik sendiri, mis. "Disetujui Oleh".</small></label></div>
-        <div class="row" style="gap:18px"><label class="chk"><input type="checkbox"${raw(s.showInSOP ? ' checked' : '')} data-change="cf.sg" data-i="${i}" data-f="showInSOP"><span>Tampil di SOP</span></label><label class="chk"><input type="checkbox"${raw(s.showInLetter ? ' checked' : '')} data-change="cf.sg" data-i="${i}" data-f="showInLetter"><span>Tersedia untuk surat</span></label></div>
+        <div class="row" style="gap:18px">${cfIsAdmin() ? h`<label class="chk"><input type="checkbox"${raw(s.showInSOP ? ' checked' : '')} data-change="cf.sg" data-i="${i}" data-f="showInSOP"><span>Tampil di SOP</span></label>` : ''}<label class="chk"><input type="checkbox"${raw(s.showInLetter ? ' checked' : '')} data-change="cf.sg" data-i="${i}" data-f="showInLetter"><span>Tersedia untuk surat</span></label></div>
         <div class="stack-sm"><span class="fld-l">Tanda tangan gambar</span>${cfImgBlock('sig:' + i, 'Tanda tangan ' + (s.name || ''), 'Foto/scan di kertas putih atau gambar langsung. Boleh dikosongkan (tanda tangan basah).')}</div>
         <div class="form-grid">
           <label class="fld"><span class="fld-l">Tanggal di bawah tanda tangan SOP</span><select class="select" data-change="cf.sg" data-i="${i}" data-f="sigDateMode">${[['doc', 'Ikut tanggal dokumen'], ['manual', 'Tanggal tetap'], ['blank', 'Kosongkan (isi tangan)']].map(([v, l]) => h`<option value="${v}"${raw(s.sigDateMode === v ? ' selected' : '')}>${l}</option>`)}</select></label>
@@ -8216,14 +8236,16 @@ function cfSignersHTML() {
       </div></section>`)}
     <div class="row">${btn('Tambah penandatangan', 'cf.sg.add', { icon: 'plus' })}</div></div>`;
 }
+const cfIsAdmin = () => can('config.manage');
+const CF_LETTER_KEYS = ['headerMode','headerImage','headerImageMaxMm','headerImageFit','footerMode','footerImage','footerImageMaxMm','footerImageFit','footerText','showFooter','letterMargins','letterSize','letterFont','watermark'];
 const CF_GROUPS = {
   sop: { title:'Format SOP', desc:'Atur sampul, kop/header SOP, nomor bagian, struktur isi dan catatan kaki.', tabs:[['lay','Halaman & header'],['str','Struktur & penomoran'],['sopfoot','Catatan kaki SOP']] },
   surat: { title:'Format Surat & Memo', desc:'Atur kop surat, kaki surat, huruf, margin dan tanda air.', tabs:[['letterkop','Kop & kaki surat'],['fmt','Huruf & margin']] },
   umum: { title:'Pengaturan Bersama', desc:'Identitas perusahaan, logo dan penandatangan yang digunakan di kedua jenis dokumen.', tabs:[['kop','Identitas & logo'],['ttd','Penandatangan']] }
 };
 const cfGroupOf = tab => Object.keys(CF_GROUPS).find(k => CF_GROUPS[k].tabs.some(t => t[0] === tab)) || 'umum';
-const cfTabsItems = () => CF_GROUPS[cfGroupOf(CF.tab)].tabs.map(([id,label]) => ({id,label, badge:id==='ttd'?CF.sg.length:id==='str'?(CF.d.sections.filter(x=>!SEC_DEFS[x.id]).length||''):''}));
-const cfGroupHTML = () => h`<div class="cf-group-nav" role="group" aria-label="Kelompok pengaturan">${Object.entries(CF_GROUPS).map(([id,g])=>h`<button type="button" class="cf-group-btn ${cfGroupOf(CF.tab)===id?'on':''}" data-act="cf.group" data-id="${id}" aria-pressed="${cfGroupOf(CF.tab)===id}"><b>${g.title}</b><small>${g.desc}</small></button>`)}</div><div class="cf-group-intro"><b>${CF_GROUPS[cfGroupOf(CF.tab)].title}</b><span>${CF_GROUPS[cfGroupOf(CF.tab)].desc}</span></div>`;
+const cfTabsItems = () => (cfIsAdmin() ? CF_GROUPS[cfGroupOf(CF.tab)].tabs : [['letterkop','Kop & kaki surat'],['fmt','Huruf & margin'],['ttd','Penandatangan surat']]).map(([id,label]) => ({id,label, badge:id==='ttd'?CF.sg.length:id==='str'?(CF.d.sections.filter(x=>!SEC_DEFS[x.id]).length||''):''}));
+const cfGroupHTML = () => h`<div class="cf-group-nav" role="group" aria-label="Kelompok pengaturan">${Object.entries(CF_GROUPS).filter(([id]) => cfIsAdmin() || id === 'surat').map(([id,g])=>h`<button type="button" class="cf-group-btn ${cfGroupOf(CF.tab)===id?'on':''}" data-act="cf.group" data-id="${id}" aria-pressed="${cfGroupOf(CF.tab)===id}"><b>${g.title}</b><small>${g.desc}</small></button>`)}</div><div class="cf-group-intro"><b>${!cfIsAdmin() && CF.tab === 'ttd' ? 'Penandatangan Surat & Memo' : CF_GROUPS[cfGroupOf(CF.tab)].title}</b><span>${!cfIsAdmin() && CF.tab === 'ttd' ? 'Daftar tanda tangan yang hanya berlaku untuk surat dan memo.' : CF_GROUPS[cfGroupOf(CF.tab)].desc}</span></div>`;
 const cfBodyHTML = () => CF.tab === 'ttd' ? cfSignersHTML() : CF.tab === 'fmt' ? cfFormatHTML() : CF.tab === 'letterkop' ? cfLetterBrandHTML() : CF.tab === 'sopfoot' ? cfSopFooterHTML() : CF.tab === 'lay' ? cfLyHTML() : CF.tab === 'str' ? cfStHTML() : cfIdentityHTML();
 function cfRefreshForm() {
   const t=byId('cfTabs'), b=byId('cfBody'), g=byId('cfGroups'); if(!t||!b)return;
@@ -8232,6 +8254,7 @@ function cfRefreshForm() {
   b.innerHTML=toHtml(cfBodyHTML()); window.scrollTo(0,sy);
 }
 function cfApplyTab(id) {
+  if (!cfIsAdmin() && !['letterkop','fmt','ttd'].includes(id)) return;
   CF.tab=id; const group=cfGroupOf(id), desired=group==='sop'?'sop':group==='surat'?'surat':CF.prev;
   const changed=CF.prev!==desired; CF.prev=desired; cfRefreshForm();
   if(changed){const b=byId('cfPrevBar');if(b)b.innerHTML=toHtml(cfPrevBarHTML());cfPreview();}
@@ -8249,6 +8272,7 @@ function cfFieldSet(el) {
 INP['cf.f'] = cfFieldSet; CHG['cf.f'] = cfFieldSet;
 function cfSgSet(el) {
   const s = CF.sg && CF.sg[+el.dataset.i]; if (!s) return; const f = el.dataset.f;
+  if (!cfIsAdmin() && (f === 'showInSOP' || s.showInSOP)) return;
   s[f] = el.type === 'checkbox' ? el.checked : el.value; cfMarkDirty(); cfSchedule();
   const card = el.closest('.cf-sg');
   if (f === 'name' && card) { const t = card.querySelector('h3'); if (t) t.textContent = s.name || 'Penandatangan baru'; }
@@ -8256,7 +8280,7 @@ function cfSgSet(el) {
 }
 INP['cf.sg'] = cfSgSet; CHG['cf.sg'] = cfSgSet;
 ACT['cf.sg.add'] = () => {
-  CF.sg.push({ id: uid('sg'), name: '', position: '', role: 'Disetujui Oleh', showInSOP: true, showInLetter: true, order: CF.sg.length + 1, signature: '', sigDateMode: 'doc', sigDate: '' });
+  CF.sg.push({ id: uid('sg'), name: '', position: '', role: 'Disetujui Oleh', showInSOP: cfIsAdmin(), showInLetter: true, order: CF.sg.length + 1, signature: '', sigDateMode: 'doc', sigDate: '' });
   cfMarkDirty(); cfRefreshForm(); cfSchedule(); const cards = document.querySelectorAll('.cf-sg'), last = cards[cards.length - 1];
   if (last) { last.scrollIntoView({ block: 'center' }); const i = last.querySelector('input[data-f="name"]'); if (i) i.focus(); }
 };
@@ -8310,10 +8334,13 @@ function cfChangeSummary(oldC, newC, oldS, newS) {
   return out.join(', ');
 }
 function cfSave() {
-  if (!can('config.manage') || !CF.d) return false;
-  const issues = cfValidate(), err = issues.find(x => x[0] === 'error');
+  if (!can('document.brand.manage') || !CF.d) return false;
+  const issues = cfValidate().filter(x => cfIsAdmin() || (x[2] !== 'lay' && x[2] !== 'str' && x[2] !== 'sopfoot' && !(x[2] === 'ttd' && x[0] === 'warn'))), err = issues.find(x => x[0] === 'error');
   if (err) { if (err[2] && err[2] !== CF.tab) { CF.tab = err[2]; cfRefreshForm(); } toast(err[1], 'danger', 6500); return false; }
-  const cfg = cfClean(CF.d), sg = cfCleanSigners(CF.sg), snap = { c: DB.docConfig, s: DB.signers }, sum0 = cfChangeSummary(snap.c, cfg, snap.s, sg);
+  const fullCfg = cfClean(CF.d), editedSigners = cfCleanSigners(CF.sg);
+  const cfg = cfIsAdmin() ? fullCfg : Object.assign(clone(DB.docConfig), Object.fromEntries(CF_LETTER_KEYS.map(k => [k, fullCfg[k]])));
+  const sg = cfIsAdmin() ? editedSigners : DB.signers.map(s => s.showInSOP ? s : (editedSigners.find(e => e.id === s.id) || s)).concat(editedSigners.filter(s => !DB.signers.some(old => old.id === s.id)).map(s => Object.assign({}, s, { showInSOP: false })));
+  const snap = { c: DB.docConfig, s: DB.signers }, sum0 = cfChangeSummary(snap.c, cfg, snap.s, sg);
   DB.docConfig = cfg; DB.signers = sg;
   if (!dbSave('docConfig', 'signers')) {
     DB.docConfig = snap.c; DB.signers = snap.s; dbSave('docConfig', 'signers');
@@ -8321,7 +8348,7 @@ function cfSave() {
   }
   logAct('Ubah kop, tata letak & penandatangan', '', sum0 || 'Tanpa perubahan isi');
   const warn = issues.find(x => x[0] === 'warn');
-  cfLoad(); toast(warn ? `Disimpan. Catatan: ${warn[1]}` : 'Kop, tata letak & penandatangan disimpan.', warn ? 'info' : 'ok', warn ? 6500 : 3600);
+  cfLoad(); toast(warn ? `Perubahan masuk antrean sinkronisasi. Catatan: ${warn[1]}` : 'Perubahan masuk antrean sinkronisasi. Pastikan indikator menunjukkan Tersinkron sebelum menutup halaman.', 'info', 6500);
   renderSide(); App.rerender(); return true;
 }
 ACT['cf.save'] = () => cfSave();
@@ -8335,6 +8362,7 @@ document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.ke
 /* ---------- halaman ---------- */
 route(/^\/config$/, () => {
   const entering = !(App.cur && App.cur.path === '/config'); if (entering || !CF.d) { cfLoad(); CF.chain = Promise.resolve(); }
+  if (!cfIsAdmin()) { CF.tab = 'letterkop'; CF.prev = 'surat'; }
   App.dirty = cfDirty;
   return {
     title: 'Pengaturan Format Dokumen', post: () => cfPreview(),
@@ -8343,7 +8371,7 @@ route(/^\/config$/, () => {
     <div class="grid g-gen"><div class="stack"><div id="cfGroups">${cfGroupHTML()}</div><div id="cfTabs">${tabsHTML(cfTabsItems(), CF.tab, 'cf.tab')}</div><div id="cfBody">${cfBodyHTML()}</div></div>
       <div class="sticky-col stack"><div class="row" id="cfPrevBar">${cfPrevBarHTML()}</div><div id="cfPrev"><div class="doc-wait"><span class="spin"></span>Menyusun pratinjau…</div></div></div></div></div>`
   };
-}, { nav: 'config', cap: 'config.manage' });
+}, { nav: 'config', cap: 'document.brand.manage' });
 
 /* ---- 42b-v-config-layout.js ---- */
 /* =====================================================================
@@ -8567,6 +8595,7 @@ const stgDirtyBox = () => h`<div class="callout warn" id="stgDirty" hidden>${ico
 
 const stgTabList = () => [
   { id: 'umum', label: 'Umum' },
+  can('config.manage') ? { id: 'brand', label: 'Identitas & logo' } : null,
   can('config.manage') ? { id: 'nomor', label: 'Penomoran surat' } : null,
   can('config.manage') ? { id: 'kategori', label: 'Kategori SOP' } : null,
   can('data.backup') || can('data.restore') ? { id: 'data', label: 'Data & backup' } : null
@@ -8607,8 +8636,11 @@ function stgGeneralHTML() {
     <section class="panel"><div class="panel-h"><h3>Tampilan</h3></div><div class="panel-b row">
       <div class="chips" role="group" aria-label="Tema"><button type="button" class="chip ${dark ? '' : 'on'}" data-act="set.theme" data-v="light">${ico('sun', 15)} Terang</button><button type="button" class="chip ${dark ? 'on' : ''}" data-act="set.theme" data-v="dark">${ico('moon', 15)} Gelap</button></div>
       <span class="muted small">Berlaku untuk perangkat ini saja.</span><span class="spacer"></span>${btn('Profil & kata sandi saya', 'profile.open', { icon: 'user' })}</div></section>
+    ${can('config.manage') ? h`<section class="panel"><div class="panel-h"><h3>Identitas visual perusahaan</h3></div><div class="panel-b stack"><p class="muted small">Nama perusahaan, logo login, dan favicon dikelola terpisah.</p>${btn('Kelola identitas dan logo', 'set.brand', { icon: 'image' })}</div></section>` : ''}
     ${can('config.manage') ? stgPolicyForm() : stgPolicyReadOnly()}</div>`;
 }
+ACT['set.brand'] = () => App.go('/settings?tab=brand');
+function stgBrandHTML() { return h`<div id="cfRoot" class="stack">${cfIdentityHTML()}<div class="row">${btn('Batalkan perubahan', 'cf.revert', { icon: 'undo' })}${btn('Simpan identitas perusahaan', 'cf.save', { icon: 'save', cls: 'primary' })}</div><p class="muted small">Status sinkronisasi ke Supabase dapat dilihat pada indikator di bagian atas aplikasi.</p></div>`; }
 ACT['set.theme'] = el => { DB.settings.theme = el.dataset.v === 'dark' ? 'dark' : 'light'; dbSave('settings'); applyTheme(); renderTop(); App.rerender(); };
 CHG['set.pol'] = el => { const s = byId('stgSelf'); if (s) s.disabled = !el.checked; };
 SUB['set.general'] = f => {
@@ -8986,7 +9018,8 @@ route(/^\/settings$/, (m, q) => {
   const entering = !(App.cur && App.cur.path === '/settings'); if (entering) STG.dirty = false;
   App.dirty = stgDirty;
   const tabs = stgTabList(); let tab = q.tab || UI.get('set.tab', 'umum'); if (!tabs.some(t => t.id === tab)) tab = 'umum'; UI.set('set.tab', tab);
-  const body = tab === 'nomor' ? stgNumberingHTML() : tab === 'kategori' ? stgCatsHTML() : tab === 'data' ? stgDataHTML() : stgGeneralHTML();
+  if (tab === 'brand') { if (!CF.d || !CF.dirty) cfLoad(); CF.tab = 'kop'; App.dirty = cfDirty; }
+  const body = tab === 'brand' ? stgBrandHTML() : tab === 'nomor' ? stgNumberingHTML() : tab === 'kategori' ? stgCatsHTML() : tab === 'data' ? stgDataHTML() : stgGeneralHTML();
   return {
     title: 'Pengaturan & data', post: () => { if (tab === 'nomor') stgNumPreview(); },
     html: h`${pageHead('Pengaturan & data', 'Kebijakan sistem, penomoran surat, kategori dokumen, backup, dan pemulihan.', '')}${tabsHTML(tabs, tab, 'set.tab')}<div style="margin-top:16px">${body}</div>`
