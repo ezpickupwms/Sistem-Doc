@@ -8190,7 +8190,7 @@ function cfIdentityHTML() { const d = CF.d; return h`<div class="stack">    <sec
       ${cfT('phone', 'Telepon', { max: 40 })}${cfT('email', 'Email', { max: 120 })}${cfT('website', 'Situs web', { cls: 'full', max: 80 })}
     </div></div></section>
     <section class="panel"><div class="panel-h"><h3>Logo perusahaan</h3></div><div class="panel-b stack">${cfImgBlock('logo', 'Logo', 'PNG/JPG/SVG; latar transparan paling rapi. Otomatis diperkecil.')}
-      ${F.check('showLogoInHeader', 'Tampilkan logo di kop surat dan header SOP', d.showLogoInHeader !== false, { change: 'cf.f' })}<div class="divider"></div><b>Ikon aplikasi dan tab browser</b>${cfImgBlock('appIcon','Favicon aplikasi','Unggah ikon persegi PNG/JPG/WEBP; bila kosong menggunakan logo perusahaan.')}</div></section>
+      ${F.check('showLogoInHeader', 'Tampilkan logo di kop surat dan header SOP', d.showLogoInHeader !== false, { change: 'cf.f' })}</div></section><section class="panel"><div class="panel-h"><h3>Favicon aplikasi (terpisah)</h3></div><div class="panel-b stack">${cfImgBlock('appIcon','Favicon aplikasi','Unggah ikon persegi PNG/JPG/WEBP. Bila kosong, ikon aplikasi bawaan digunakan; logo perusahaan tidak ikut berubah.')}</div></section>
 </div>`; }
 function cfLetterBrandHTML() { const d=CF.d, imgHead=d.headerMode === 'image', imgFoot=d.footerMode === 'image'; return h`<div class="stack">    <section class="panel"><div class="panel-h"><h3>1. Kop surat keluar &amp; memo</h3><span class="spacer"></span><div class="chips" role="group" aria-label="Jenis kop"><button type="button" class="chip ${imgHead ? '' : 'on'}" data-act="cf.mode" data-k="headerMode" data-v="text">Kop teks</button><button type="button" class="chip ${imgHead ? 'on' : ''}" data-act="cf.mode" data-k="headerMode" data-v="image">Kop gambar</button></div></div><div class="panel-b stack">
       ${imgHead ? h`${cfImgBlock('headerImage', 'Gambar kop', 'Unggah kop lengkap termasuk logo dan informasi perusahaan. Gambar diperkecil proporsional; logo teks otomatis tidak ditambahkan lagi agar tidak ganda.')}
@@ -8341,7 +8341,7 @@ function cfSave() {
   }
   logAct('Ubah kop, tata letak & penandatangan', '', sum0 || 'Tanpa perubahan isi');
   const warn = issues.find(x => x[0] === 'warn');
-  cfLoad(); toast(warn ? `Disimpan. Catatan: ${warn[1]}` : 'Kop, tata letak & penandatangan disimpan.', warn ? 'info' : 'ok', warn ? 6500 : 3600);
+  cfLoad(); toast(warn ? `Perubahan masuk antrean sinkronisasi. Catatan: ${warn[1]}` : 'Perubahan masuk antrean sinkronisasi. Pastikan indikator menunjukkan Tersinkron sebelum menutup halaman.', 'info', 6500);
   renderSide(); App.rerender(); return true;
 }
 ACT['cf.save'] = () => cfSave();
@@ -8587,6 +8587,7 @@ const stgDirtyBox = () => h`<div class="callout warn" id="stgDirty" hidden>${ico
 
 const stgTabList = () => [
   { id: 'umum', label: 'Umum' },
+  can('config.manage') ? { id: 'brand', label: 'Identitas & logo' } : null,
   can('config.manage') ? { id: 'nomor', label: 'Penomoran surat' } : null,
   can('config.manage') ? { id: 'kategori', label: 'Kategori SOP' } : null,
   can('data.backup') || can('data.restore') ? { id: 'data', label: 'Data & backup' } : null
@@ -8630,7 +8631,8 @@ function stgGeneralHTML() {
     ${can('config.manage') ? h`<section class="panel"><div class="panel-h"><h3>Identitas visual perusahaan</h3></div><div class="panel-b stack"><p class="muted small">Nama perusahaan, logo login, dan favicon dikelola terpisah.</p>${btn('Kelola identitas dan logo', 'set.brand', { icon: 'image' })}</div></section>` : ''}
     ${can('config.manage') ? stgPolicyForm() : stgPolicyReadOnly()}</div>`;
 }
-ACT['set.brand'] = () => App.go('/config');
+ACT['set.brand'] = () => App.go('/settings?tab=brand');
+function stgBrandHTML() { return h`<div id="cfRoot" class="stack">${cfIdentityHTML()}<div class="row">${btn('Batalkan perubahan', 'cf.revert', { icon: 'undo' })}${btn('Simpan identitas perusahaan', 'cf.save', { icon: 'save', cls: 'primary' })}</div><p class="muted small">Status sinkronisasi ke Supabase dapat dilihat pada indikator di bagian atas aplikasi.</p></div>`; }
 ACT['set.theme'] = el => { DB.settings.theme = el.dataset.v === 'dark' ? 'dark' : 'light'; dbSave('settings'); applyTheme(); renderTop(); App.rerender(); };
 CHG['set.pol'] = el => { const s = byId('stgSelf'); if (s) s.disabled = !el.checked; };
 SUB['set.general'] = f => {
@@ -9008,7 +9010,8 @@ route(/^\/settings$/, (m, q) => {
   const entering = !(App.cur && App.cur.path === '/settings'); if (entering) STG.dirty = false;
   App.dirty = stgDirty;
   const tabs = stgTabList(); let tab = q.tab || UI.get('set.tab', 'umum'); if (!tabs.some(t => t.id === tab)) tab = 'umum'; UI.set('set.tab', tab);
-  const body = tab === 'nomor' ? stgNumberingHTML() : tab === 'kategori' ? stgCatsHTML() : tab === 'data' ? stgDataHTML() : stgGeneralHTML();
+  if (tab === 'brand') { if (!CF.d || !CF.dirty) cfLoad(); CF.tab = 'kop'; App.dirty = cfDirty; }
+  const body = tab === 'brand' ? stgBrandHTML() : tab === 'nomor' ? stgNumberingHTML() : tab === 'kategori' ? stgCatsHTML() : tab === 'data' ? stgDataHTML() : stgGeneralHTML();
   return {
     title: 'Pengaturan & data', post: () => { if (tab === 'nomor') stgNumPreview(); },
     html: h`${pageHead('Pengaturan & data', 'Kebijakan sistem, penomoran surat, kategori dokumen, backup, dan pemulihan.', '')}${tabsHTML(tabs, tab, 'set.tab')}<div style="margin-top:16px">${body}</div>`
